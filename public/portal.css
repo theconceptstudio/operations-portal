@@ -28,6 +28,7 @@ main{padding:16px 14px;max-width:640px;margin:0 auto}
 .pill.day{background:var(--cream2);color:var(--muted)}
 .pill.prio{background:#f0e7d6;color:#8a6d1e}
 .pill.prio.vh{background:#f6dcd3;color:#a3392a}
+.istr{margin-top:9px;padding:9px 11px;background:var(--cream);border:1px solid var(--border);border-left:3px solid var(--brn);border-radius:0 8px 8px 0;font-family:'HNL',sans-serif;font-size:13px;line-height:1.45;color:var(--brn)}
 .acts{display:flex;gap:8px;margin-top:12px}
 .btn{flex:1;border:none;border-radius:9px;padding:13px;font-family:'HNR';font-size:12px;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
 .btn.go{background:var(--brn);color:#fff}

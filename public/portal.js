@@ -45,7 +45,7 @@ function issueCard(i){
       <div><div class="cap">${esc(i.descrizione||'Intervento')}</div>
         <div class="sub">${esc(i.appartamento)}${i.data_intervento?' · '+dow(i.data_intervento)+' '+dmy(i.data_intervento):''}${i.stato?' · '+esc(i.stato):''}</div></div>
       ${pill}
-    </div>${acts}</div>`;
+    </div>${i.istruzioni?`<div class="istr">${esc(i.istruzioni).replace(/\n/g,'<br>')}</div>`:''}${acts}</div>`;
 }
 
 function render(d){

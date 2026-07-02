@@ -182,6 +182,7 @@ def sync_issues():
             'priorita': sel_name(pr.get('Priority')),
             'stato': stato,
             'data_intervento': date_start(pr.get('Data Intervento')),
+            'istruzioni': text_of(pr.get('Istruzioni operatore')),
             'confermato_manutentore': chk_of(pr.get('Confermato dal manutentore')),
             'confermato_il': conf_il,
             'created_time': (pr.get('Created time') or {}).get('created_time'),
