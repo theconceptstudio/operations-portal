@@ -246,7 +246,7 @@ function iCard(x,kind){
     ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
     ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
     <div class="actions">
-      <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}',this)">
+      <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
         ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
       ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
       ${kind==='issue'?`<button class="btn foto" onclick="pickFoto('${id}')">${ic('camera')}Foto</button>`:''}
@@ -254,16 +254,36 @@ function iCard(x,kind){
   </div>`;
 }
 
-async function conferma(kind,id,btn){
-  btn.disabled=true; btn.innerHTML=ic('check')+'…';
-  try{
-    const r=await fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind,id})});
-    const j=await r.json(); if(!j.ok) throw new Error(j.error||'errore');
-    const arr=kind==='issue'?DATA.issues:DATA.tasks;
-    const it=(arr||[]).find(x=>x.notion_id===id); if(it) it.confermato_manutentore=true;
-    toast('Confermato. Grazie!'); render();
-  }catch(e){ btn.disabled=false; btn.innerHTML=ic('check')+'Confermo fatto'; toast('Non riuscito, riprova.'); }
+/* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */
+let PENDING=null;
+function conferma(kind,id){
+  if(PENDING) commitPending();                 // se c'è già un pending, lo confermo subito
+  const arr=kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===id); if(!it) return;
+  it.confermato_manutentore=true; render();     // ottimistico
+  let sec=5;
+  const t=document.getElementById('toast');
+  const paint=()=>{ t.innerHTML=`<svg class="ic" viewBox="0 0 24 24">${ICN.check}</svg><span>Segnato come fatto</span>`+
+    `<button class="undo-btn" onclick="undoConferma()">${ic('chevronL')}Annulla ${sec}</button>`; };
+  paint(); t.classList.add('show','undo');
+  const iv=setInterval(()=>{ sec--; if(sec<=0){ commitPending(); } else paint(); },1000);
+  PENDING={kind,id,it,iv};
+}
+function commitPending(){
+  if(!PENDING) return;
+  const p=PENDING; PENDING=null; clearInterval(p.iv);
+  const t=document.getElementById('toast'); t.classList.remove('show','undo');
+  fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind:p.kind,id:p.id})})
+    .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; })
+    .catch(()=>{ p.it.confermato_manutentore=false; render(); toast('Conferma non riuscita, riprova.'); });
+}
+function undoConferma(){
+  if(!PENDING) return;
+  const p=PENDING; PENDING=null; clearInterval(p.iv);
+  p.it.confermato_manutentore=false; render();
+  const t=document.getElementById('toast'); t.classList.remove('show','undo');
+  toast('Annullato');
 }
 
 /* Foto (solo manutenzioni) — da fotocamera, file o galleria; anche più di una */
