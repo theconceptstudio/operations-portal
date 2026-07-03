@@ -1,104 +1,192 @@
 const TOKEN = document.body.dataset.token;
 const API = `/api/o/${TOKEN}`;
 const DOW = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
-let OGGI = new Date().toISOString().slice(0,10);
+const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const MESI3 = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+const P_COLOR = {'Very High':'#b23b2e','High':'#c8792f','Medium':'#3b6ea5','Low':'#3f8f5e'};
+const P_LBL = {'Very High':'Urgente','High':'Alta','Medium':'Media','Low':'Bassa'};
 
-function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function dmy(s){ if(!s) return ''; const p=s.split('-'); return `${p[2]}/${p[1]}`; }
-function dow(s){ if(!s) return ''; const d=new Date(s+'T00:00:00'); return DOW[d.getDay()]; }
-function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+/* Icone Lucide (stroke, no emoji) */
+const ICN = {
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  key:'<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3"/><path d="m16 5 3 3"/><path d="m13 8 3 3"/>',
+  luggage:'<rect x="6" y="7" width="12" height="14" rx="2"/><path d="M9 7V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v3"/><path d="M9 21v1M15 21v1"/>',
+  calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 10h16"/>',
+  camera:'<path d="M14.5 5h-5L8 7.5H5A2 2 0 0 0 3 9.5v8A2 2 0 0 0 5 19.5h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.2"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  message:'<path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 20.5l1.5-5.5A8.5 8.5 0 1 1 21 11.5Z"/>',
+  chevronL:'<path d="m15 6-6 6 6 6"/>',
+  chevronR:'<path d="m9 6 6 6-6 6"/>',
+  pin:'<path d="M20 10c0 5.5-8 11-8 11s-8-5.5-8-11a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>',
+  wrench:'<path d="M15 6a4 4 0 0 0 5.2 5.2L14 17.4a2.3 2.3 0 0 1-3.3-3.3L16.8 8A4 4 0 0 0 15 6l-3 3-2-2 3-3Z"/>',
+  sparkles:'<path d="M12 4l1.6 4.9L18.5 10.5 13.6 12.1 12 17l-1.6-4.9L5.5 10.5l4.9-1.6z"/><path d="M18 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  clipboard:'<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="m9.5 14 2 2 3.5-3.5"/>',
+  broom:'<path d="M4 20l7-7"/><path d="M13 11l4-4a2.8 2.8 0 0 1 4 4l-4 4"/><path d="M11 13l3 3-4 4H6l-2-2 4-4z"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+};
+function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
+
+let DATA=null, TAB='pulizie', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+
+function todayISO(){ return iso(new Date()); }
+function pad(n){ return String(n).padStart(2,'0'); }
+function iso(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function parseISO(s){ const a=s.split('-').map(Number); return new Date(a[0],a[1]-1,a[2]); }
+function addDays(s,n){ const d=parseISO(s); d.setDate(d.getDate()+n); return iso(d); }
+function mondayOf(s){ const d=parseISO(s); const w=(d.getDay()+6)%7; d.setDate(d.getDate()-w); return iso(d); }
+function dLong(s){ const d=parseISO(s); return DOW[d.getDay()]+' '+d.getDate()+' '+MESI[d.getMonth()]; }
+function dShort(s){ const d=parseISO(s); return d.getDate()+' '+MESI3[d.getMonth()]; }
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 async function load(){
-  let d;
-  try{ d=await fetch(`${API}/data`).then(r=>r.json()); }
-  catch(e){ document.getElementById('app').innerHTML='<div class="empty">Errore di connessione. Riprova.</div>'; return; }
-  if(d.error){ document.getElementById('app').innerHTML='<div class="empty">Link non valido.</div>'; return; }
-  OGGI=d.oggi||OGGI;
-  render(d);
+  try{
+    const r=await fetch(`${API}/data`); DATA=await r.json();
+    if(DATA.error){ document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Sessione non valida.</div></div>'; return; }
+    render();
+  }catch(e){ document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Connessione non riuscita. Riprova.</div></div>'; }
 }
 
-function pulCard(p){
-  const cls=p.tipo==='Proprietario'?'owner':(p.tipo==='Intermedia'?'mid':'');
+function counts(){
+  return {p:(DATA.pulizie||[]).filter(x=>x.stato!=='Completata').length,
+          m:(DATA.issues||[]).length, t:(DATA.tasks||[]).length};
+}
+
+function render(){
+  const c=counts();
+  document.getElementById('app').innerHTML=
+    `<div class="tabs"><div class="wrap">
+      <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie <span class="n">${c.p}</span></button>
+      <button class="tab ${TAB==='manut'?'on':''}" onclick="setTab('manut')">${ic('wrench')}Manutenzioni <span class="n">${c.m}</span></button>
+      <button class="tab ${TAB==='task'?'on':''}" onclick="setTab('task')">${ic('clipboard')}Task <span class="n">${c.t}</span></button>
+    </div></div>
+    <div class="content">${TAB==='pulizie'?viewPulizie():TAB==='manut'?viewInterventi('issue'):viewInterventi('task')}</div>`;
+}
+function setTab(t){ TAB=t; render(); }
+
+/* ── PULIZIE ───────────────────────────────────────────────────────── */
+function viewPulizie(){
+  const puliz=(DATA.pulizie||[]).filter(x=>x.stato!=='Annullata');
+  const byDay={}; puliz.forEach(p=>{ if(p.data) (byDay[p.data]=byDay[p.data]||[]).push(p); });
+  let days='';
+  for(let i=0;i<7;i++){
+    const dISO=addDays(WEEK0,i), d=parseISO(dISO), n=(byDay[dISO]||[]).length;
+    days+=`<div class="day ${dISO===SEL?'on':''} ${dISO===todayISO()?'today':''}" onclick="pick('${dISO}')">
+      <div class="dow">${DOW[d.getDay()]}</div><div class="dnum">${d.getDate()}</div>
+      ${n?'<div class="dot"></div>':'<div class="empty"></div>'}</div>`;
+  }
+  const range=`${dShort(WEEK0)} – ${dShort(addDays(WEEK0,6))}`;
+  const strip=`<div class="wklbl">${ic('calendar')} Settimana · ${range}</div>
+    <div class="wk"><button class="nav" onclick="shiftWeek(-1)">${ic('chevronL')}</button>
+    <div class="days">${days}</div>
+    <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></div>`;
+
+  const list=(byDay[SEL]||[]).slice().sort((a,b)=>(a.inizio||'').localeCompare(b.inizio||''));
+  let body;
+  if(!list.length){
+    body=`<div class="empty-state">${ic('sparkles')}<div class="t">Giornata libera</div>Nessuna pulizia ${SEL===todayISO()?'oggi':'in questo giorno'}.</div>`;
+  }else{
+    body=`<div class="grid">${list.map(pCard).join('')}</div>`;
+  }
+  return strip+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
+}
+
+function pCard(p){
+  const cls=p.tipo==='Proprietario'?'owner':p.tipo==='Intermedia'?'mid':'';
+  const chip=p.tipo==='Proprietario'?`<span class="chip owner"><span class="d"></span>Proprietario</span>`
+      :p.tipo==='Intermedia'?`<span class="chip mid"><span class="d"></span>Intermedia</span>`
+      :`<span class="chip std"><span class="d"></span>Standard</span>`;
+  const svc=[];
+  if(p.late_checkout) svc.push(`<span class="svc">${ic('clock')}Late checkout</span>`);
+  if(p.early_checkin) svc.push(`<span class="svc">${ic('key')}Early check-in</span>`);
+  if(p.deposito) svc.push(`<span class="svc">${ic('luggage')}Deposito: ${esc(p.deposito)}</span>`);
+  const ora=p.inizio?`${esc(p.inizio)}${p.fine?'–'+esc(p.fine):''}`:'Orario da definire';
   const done=p.stato==='Completata';
-  const svc=[p.late_checkout?'Late checkout':'', p.deposito&&p.deposito!=='Nessuno'?'Deposito':''].filter(Boolean).join(' · ');
-  return `<div class="card ${cls} ${done?'done':''}">
-    <div class="row1">
-      <div><div class="cap">${esc(p.appartamento)}</div>
-        <div class="sub">${dow(p.data)} ${dmy(p.data)}${svc?' · '+esc(svc):''}${p.tipo&&p.tipo!=='Standard'?' · '+esc(p.tipo):''}</div></div>
-      <span class="pill day">${dmy(p.data)}</span>
-    </div></div>`;
+  return `<div class="pcard ${cls}">
+    <div class="r1"><span class="time">${ora}</span>
+      ${done?`<span class="done">${ic('check')}completata</span>`:chip}</div>
+    <div class="via">${esc(p.indirizzo||p.appartamento)}</div>
+    <div class="apt">${ic('pin')}${esc(p.appartamento)}</div>
+    ${svc.length?`<div class="svcs">${svc.join('')}</div>`:''}
+  </div>`;
+}
+function pick(d){ SEL=d; render(); }
+function shiftWeek(n){ WEEK0=addDays(WEEK0,7*n); render(); }
+
+/* ── MANUTENZIONI / TASK ───────────────────────────────────────────── */
+function viewInterventi(kind){
+  const items=(kind==='issue'?DATA.issues:DATA.tasks)||[];
+  if(!items.length){
+    return `<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun${kind==='issue'?'a manutenzione':' task'} aperto al momento.</div>`;
+  }
+  const rank={'Very High':0,'High':1,'Medium':2,'Low':3};
+  items.slice().sort((a,b)=>(rank[a.priorita]??9)-(rank[b.priorita]??9));
+  return `<div class="grid">${items.map(x=>iCard(x,kind)).join('')}</div>`;
 }
 
-function issueCard(i){
-  const overdue = i.data_intervento && i.data_intervento < OGGI && !i.confermato_manutentore;
-  const conf = i.confermato_manutentore;
-  const vh = (i.priorita==='Very High'||i.priorita==='High');
-  let pill = conf ? '<span class="pill ok">✓ Confermato</span>'
-           : overdue ? '<span class="pill red">In ritardo</span>'
-           : (i.priorita?`<span class="pill prio ${vh?'vh':''}">${esc(i.priorita)}</span>`:'');
-  let acts = conf ? '' : `<div class="acts">
-      <button class="btn go" onclick="conferma('${i.notion_id}',this)">✓ Confermo fatto</button>
-      <button class="btn gh" onclick="pickFoto('${i.notion_id}')">📷 Foto</button>
-    </div>`;
-  return `<div class="card ${overdue?'late':''} ${conf?'done':''}">
-    <div class="row1">
-      <div><div class="cap">${esc(i.descrizione||'Intervento')}</div>
-        <div class="sub">${esc(i.appartamento)}${i.data_intervento?' · '+dow(i.data_intervento)+' '+dmy(i.data_intervento):''}${i.stato?' · '+esc(i.stato):''}</div></div>
-      ${pill}
-    </div>${i.istruzioni?`<div class="istr">${esc(i.istruzioni).replace(/\n/g,'<br>')}</div>`:''}${acts}</div>`;
+function iCard(x,kind){
+  const pc=P_COLOR[x.priorita]||'#9A9183';
+  const plbl=P_LBL[x.priorita]||x.priorita||'';
+  const titolo=kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
+  const dataRaw=kind==='issue'?x.data_intervento:x.due_date;
+  const conf=x.confermato_manutentore;
+  let late=false, dataLbl='';
+  if(dataRaw){ dataLbl=dLong(dataRaw); if(!conf && dataRaw<todayISO()) late=true; }
+  const via=x.indirizzo||x.appartamento;
+  const wa=via?`https://wa.me/?text=${encodeURIComponent(titolo+' — '+via)}`:'';
+  const istr=(x.istruzioni||'').trim();
+  const id=x.notion_id;
+  return `<div class="icard ${late?'late':''}">
+    ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:''}
+    <div class="titolo">${esc(titolo)}</div>
+    <div class="dove">
+      <div class="lbl">Dove intervenire</div>
+      <div class="via">${esc(via||'—')}</div>
+      ${x.appartamento && x.appartamento!==via?`<div class="apt">${esc(x.appartamento)}</div>`:''}
+    </div>
+    ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?'In ritardo · ':''}${esc(dataLbl)}</div>`:''}
+    ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
+    ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
+    <div class="actions">
+      <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}',this)">
+        ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
+      ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
+      ${kind==='issue'?`<button class="btn foto" onclick="pickFoto('${id}')">${ic('camera')}Foto</button>`:''}
+    </div>
+  </div>`;
 }
 
-function render(d){
-  const fut=[], pas=[];
-  (d.pulizie||[]).forEach(p=>{ (p.data>=OGGI?fut:pas).push(p); });
-  const issues=(d.issues||[]);
-  const openIss=issues.filter(i=>!i.confermato_manutentore);
-  const confIss=issues.filter(i=>i.confermato_manutentore);
-  let h='';
-  // Interventi (priorità: scaduti in alto)
-  openIss.sort((a,b)=>{
-    const ao=(a.data_intervento&&a.data_intervento<OGGI)?0:1, bo=(b.data_intervento&&b.data_intervento<OGGI)?0:1;
-    if(ao!==bo) return ao-bo;
-    return (a.data_intervento||'9999')<(b.data_intervento||'9999')?-1:1;
-  });
-  h+=`<div class="sec"><div class="sec-h"><span class="t">I miei interventi</span><span class="n">${openIss.length} aperti</span></div>`;
-  h+= openIss.length?openIss.map(issueCard).join(''):'<div class="empty">Nessun intervento aperto 👍</div>';
-  if(confIss.length) h+=confIss.slice(0,5).map(issueCard).join('');
-  h+='</div>';
-  // Pulizie prossime
-  h+=`<div class="sec"><div class="sec-h"><span class="t">Le mie pulizie</span><span class="n">${fut.length} in arrivo</span></div>`;
-  h+= fut.length?fut.slice(0,30).map(pulCard).join(''):'<div class="empty">Nessuna pulizia assegnata.</div>';
-  h+='</div>';
-  document.getElementById('app').innerHTML=h;
-}
-
-async function conferma(issueId, btn){
-  btn.disabled=true; btn.textContent='…';
+async function conferma(kind,id,btn){
+  btn.disabled=true; btn.innerHTML=ic('check')+'…';
   try{
     const r=await fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({issue_id:issueId})}).then(r=>r.json());
-    if(!r.ok) throw 0;
-    toast('Confermato ✓'); load();
-  }catch(e){ btn.disabled=false; btn.textContent='✓ Confermo fatto'; toast('Errore, riprova'); }
+      body:JSON.stringify({kind,id})});
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'errore');
+    const arr=kind==='issue'?DATA.issues:DATA.tasks;
+    const it=(arr||[]).find(x=>x.notion_id===id); if(it) it.confermato_manutentore=true;
+    toast('Confermato. Grazie!'); render();
+  }catch(e){ btn.disabled=false; btn.innerHTML=ic('check')+'Confermo fatto'; toast('Non riuscito, riprova.'); }
 }
 
-let _fotoIssue=null;
-function pickFoto(issueId){ _fotoIssue=issueId; document.getElementById('fileinput').click(); }
-async function uploadFoto(input){
-  const f=input.files[0]; if(!f||!_fotoIssue) return;
-  toast('Carico foto…');
-  const fd=new FormData(); fd.append('issue_id',_fotoIssue); fd.append('file',f);
-  try{
-    const r=await fetch(`${API}/foto`,{method:'POST',body:fd}).then(r=>r.json());
-    toast(r.ok?'Foto caricata ✓':'Errore foto');
-  }catch(e){ toast('Errore foto'); }
-  input.value='';
+/* Foto (solo manutenzioni) */
+let FOTO_ID=null;
+function pickFoto(id){
+  FOTO_ID=id;
+  let inp=document.getElementById('fotoInput');
+  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+    inp.capture='environment'; inp.id='fotoInput'; inp.style.display='none';
+    inp.onchange=uploadFoto; document.body.appendChild(inp); }
+  inp.value=''; inp.click();
+}
+async function uploadFoto(e){
+  const f=e.target.files[0]; if(!f||!FOTO_ID) return;
+  toast('Carico la foto…');
+  const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('file',f);
+  try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
+    toast(j.ok?'Foto caricata':'Foto non caricata'); }catch(_){ toast('Foto non caricata'); }
 }
 
-// input file nascosto (apre fotocamera/galleria)
-const fi=document.createElement('input');
-fi.type='file'; fi.accept='image/*'; fi.capture='environment'; fi.id='fileinput';
-fi.onchange=()=>uploadFoto(fi); document.body.appendChild(fi);
+function toast(msg){ const t=document.getElementById('toast');
+  t.innerHTML=ICN.check?`<svg class="ic" viewBox="0 0 24 24">${ICN.check}</svg>`+esc(msg):esc(msg);
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
 
 load();
-setInterval(load, 60000); // refresh live ogni minuto

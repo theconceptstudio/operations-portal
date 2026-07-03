@@ -31,6 +31,7 @@ DB_FORNITORI    = '3289ef82-3d96-8099-8ece-db7b91f4c51f'
 DB_APPARTAMENTI = '3059ef82-3d96-8011-af2f-f61755aebaa2'
 DB_PULIZIE      = '31b9ef82-3d96-8016-9f3a-ce9fbc36d24b'
 DB_ISSUES       = '3069ef82-3d96-80db-ba50-c1f3d8374fd3'
+DB_TASKS        = '32e9ef82-3d96-8045-afb6-f15ee2d76139'
 
 STATI_ISSUE_CHIUSI = {'Fatto', 'Impossibile completare', 'Intervento non piu necessario',
                       'Intervento non più necessario'}
@@ -191,6 +192,37 @@ def sync_issues():
     print(f'issues: {len(rows)} righe aperte, {n} upsert')
     return rows
 
+def sync_tasks():
+    # solo task con un Operatore assegnato e non ancora Done
+    pages = n_query(DB_TASKS)
+    rows = []
+    for p in pages:
+        pr = p['properties']
+        op = rel_first(pr.get('Operatore'))
+        if not op:
+            continue
+        stato = status_name(pr.get('Status'))
+        if stato == 'Done':
+            continue
+        tag = ', '.join(multi_names(pr.get('Tag')))
+        rows.append({
+            'notion_id': nid(p['id']),
+            'nome': title_of(pr.get('Name')),
+            'appartamento_notion_id': rel_first(pr.get('Appartamento')),
+            'operatore_notion_id': op,
+            'priorita': sel_name(pr.get('Priority')),
+            'stato': stato,
+            'due_date': date_start(pr.get('Due Date')),
+            'tag': tag,
+            'istruzioni': text_of(pr.get('Istruzioni operatore')),
+            'confermato_manutentore': chk_of(pr.get('Confermato dal manutentore')),
+            'confermato_il': date_start(pr.get('Confermato il')),
+            'created_time': (pr.get('Created time') or {}).get('created_time'),
+        })
+    n = sb_upsert('op_tasks', rows)
+    print(f'tasks: {len(rows)} righe (con operatore, aperte), {n} upsert')
+    return rows
+
 def main():
     t0 = time.time()
     print(f'== SYNC {datetime.datetime.now().isoformat(timespec="seconds")} ==')
@@ -198,6 +230,7 @@ def main():
     apt_map = sync_appartamenti()
     sync_pulizie(apt_map)
     sync_issues()
+    sync_tasks()
     print(f'== fatto in {time.time()-t0:.1f}s ==')
 
 if __name__ == '__main__':

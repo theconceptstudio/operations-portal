@@ -78,29 +78,33 @@ def op_data(token):
     oid = op['notion_id']
     pulizie = sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'data.asc'})
     issues  = sb_get('op_issues',  {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'data_intervento.asc'})
-    # arricchisci con nome appartamento
+    tasks   = sb_get('op_tasks',   {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'due_date.asc'})
+    # arricchisci con nome + indirizzo appartamento
     apt = {a['notion_id']: a for a in sb_get('op_appartamenti', {'select': 'notion_id,nome,indirizzo'})}
-    for x in pulizie + issues:
+    for x in pulizie + issues + tasks:
         a = apt.get(x.get('appartamento_notion_id'))
         x['appartamento'] = (a or {}).get('nome') or '—'
         x['indirizzo'] = (a or {}).get('indirizzo') or ''
     return jsonify({'operatore': op.get('nome'), 'oggi': datetime.date.today().isoformat(),
-                    'pulizie': pulizie, 'issues': issues})
+                    'pulizie': pulizie, 'issues': issues, 'tasks': tasks})
 
 @app.route('/api/o/<token>/conferma', methods=['POST'])
 def conferma(token):
     op = operatore_by_token(token)
     if not op: return jsonify({'ok': False, 'error': 'token'}), 404
     d = request.get_json(force=True)
-    issue_id = d.get('issue_id')
-    if not issue_id: return jsonify({'ok': False, 'error': 'issue_id'}), 400
+    # kind: 'issue' (manutenzione) o 'task'. Retro-compat: issue_id => issue
+    kind = d.get('kind') or ('issue' if d.get('issue_id') else 'task')
+    item_id = d.get('id') or d.get('issue_id') or d.get('task_id')
+    if not item_id: return jsonify({'ok': False, 'error': 'id mancante'}), 400
+    table = 'op_tasks' if kind == 'task' else 'op_issues'
     oggi = datetime.date.today().isoformat()
     try:
-        n_patch(issue_id, {'Confermato dal manutentore': {'checkbox': True},
-                           'Confermato il': {'date': {'start': oggi}}})
-        _session.patch(f'{SUPABASE_URL}/rest/v1/op_issues',
+        n_patch(item_id, {'Confermato dal manutentore': {'checkbox': True},
+                          'Confermato il': {'date': {'start': oggi}}})
+        _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
                        headers=_sb_headers({'Prefer': 'return=minimal'}),
-                       params={'notion_id': f'eq.{issue_id}'},
+                       params={'notion_id': f'eq.{item_id}'},
                        json={'confermato_manutentore': True, 'confermato_il': oggi}, timeout=20)
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -169,11 +173,21 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <link rel=stylesheet href="/portal.css">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
-  <div class=tag>THE CONCEPT STUDIO</div>
-  <div class=hi>Ciao, <b>%NOME%</b></div>
+  <div class=wrap>
+    <div>
+      <div class=tag>The Concept Studio</div>
+      <div class=hi>Ciao, %NOME%</div>
+    </div>
+    <div class=date id=hdrDate></div>
+  </div>
 </header>
-<main id=app><div class=loading>Carico…</div></main>
+<main id=app><div class=content><div class=loading>Carico…</div></div></main>
 <div id=toast class=toast></div>
+<script>
+(function(){var d=new Date();var G=['domenica','lunedì','martedì','mercoledì','giovedì','venerdì','sabato'];
+var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
+</script>
 <script src="/portal.js"></script>
 </body></html>"""
 
