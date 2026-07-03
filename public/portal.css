@@ -106,7 +106,22 @@ svg{display:block}
 .pcard .done{margin-left:auto;font-family:var(--light);font-size:11.5px;color:var(--p-l);
   display:inline-flex;align-items:center;gap:4px}
 
+/* Filtro leggero (Da fare) */
+.filters{display:flex;gap:8px;margin:0 2px 18px;flex-wrap:wrap}
+.fchip{font-family:var(--light);font-size:12px;color:var(--greige-text);background:var(--white);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;transition:.18s}
+.fchip .ic{width:14px;height:14px}
+.fchip .n{font-size:11px;color:var(--greige)}
+.fchip.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+.fchip.on .n{color:var(--greige-soft)}
+
 /* Card intervento (manutenzioni / task) */
+.tbadge{font-family:var(--light);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--greige-text);background:var(--cream);border-radius:999px;padding:3px 9px;
+  display:inline-flex;align-items:center;gap:5px;margin-left:auto}
+.tbadge .ic{width:12px;height:12px;color:var(--greige)}
+.prio-row{display:flex;align-items:center;gap:8px}
 .icard{background:var(--white);border:1px solid var(--line);border-radius:var(--r);
   padding:20px 22px;margin-bottom:14px}
 .icard.late{box-shadow:inset 3px 0 0 var(--p-vh)}

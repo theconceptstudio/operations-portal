@@ -26,7 +26,7 @@ const ICN = {
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
-let DATA=null, TAB='pulizie', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let DATA=null, TAB='dafare', FILTER='tutti', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 
 function todayISO(){ return iso(new Date()); }
 function pad(n){ return String(n).padStart(2,'0'); }
@@ -55,13 +55,41 @@ function render(){
   const c=counts();
   document.getElementById('app').innerHTML=
     `<div class="tabs"><div class="wrap">
+      <button class="tab ${TAB==='dafare'?'on':''}" onclick="setTab('dafare')">${ic('clipboard')}Da fare <span class="n">${c.m+c.t}</span></button>
       <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie <span class="n">${c.p}</span></button>
-      <button class="tab ${TAB==='manut'?'on':''}" onclick="setTab('manut')">${ic('wrench')}Manutenzioni <span class="n">${c.m}</span></button>
-      <button class="tab ${TAB==='task'?'on':''}" onclick="setTab('task')">${ic('clipboard')}Task <span class="n">${c.t}</span></button>
     </div></div>
-    <div class="content">${TAB==='pulizie'?viewPulizie():TAB==='manut'?viewInterventi('issue'):viewInterventi('task')}</div>`;
+    <div class="content">${TAB==='dafare'?viewDaFare():viewPulizie()}</div>`;
 }
 function setTab(t){ TAB=t; render(); }
+function setFilter(f){ FILTER=f; render(); }
+
+/* ── DA FARE (manutenzioni + task uniti, urgenza-first) ────────────── */
+function viewDaFare(){
+  const issues=(DATA.issues||[]).map(x=>({...x, _kind:'issue'}));
+  const tasks =(DATA.tasks ||[]).map(x=>({...x, _kind:'task'}));
+  let items=issues.concat(tasks);
+  if(FILTER==='manut') items=items.filter(x=>x._kind==='issue');
+  if(FILTER==='task')  items=items.filter(x=>x._kind==='task');
+
+  const chips=`<div class="filters">
+    <button class="fchip ${FILTER==='tutti'?'on':''}" onclick="setFilter('tutti')">Tutti <span class="n">${issues.length+tasks.length}</span></button>
+    <button class="fchip ${FILTER==='manut'?'on':''}" onclick="setFilter('manut')">${ic('wrench')}Manutenzioni <span class="n">${issues.length}</span></button>
+    <button class="fchip ${FILTER==='task'?'on':''}" onclick="setFilter('task')">${ic('clipboard')}Task <span class="n">${tasks.length}</span></button>
+  </div>`;
+
+  if(!items.length){
+    return chips+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
+  }
+  const rank={'Very High':0,'High':1,'Medium':2,'Low':3};
+  const dateOf=x=>x._kind==='issue'?x.data_intervento:x.due_date;
+  const isLate=x=>{ const d=dateOf(x); return d && !x.confermato_manutentore && d<todayISO(); };
+  items.sort((a,b)=>{
+    if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;                 // in ritardo in cima
+    const r=(rank[a.priorita]??9)-(rank[b.priorita]??9); if(r) return r; // poi urgenza
+    return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999');     // poi data
+  });
+  return chips+`<div class="grid">${items.map(x=>iCard(x,x._kind)).join('')}</div>`;
+}
 
 /* ── PULIZIE ───────────────────────────────────────────────────────── */
 function viewPulizie(){
@@ -112,17 +140,7 @@ function pCard(p){
 function pick(d){ SEL=d; render(); }
 function shiftWeek(n){ WEEK0=addDays(WEEK0,7*n); render(); }
 
-/* ── MANUTENZIONI / TASK ───────────────────────────────────────────── */
-function viewInterventi(kind){
-  const items=(kind==='issue'?DATA.issues:DATA.tasks)||[];
-  if(!items.length){
-    return `<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun${kind==='issue'?'a manutenzione':' task'} aperto al momento.</div>`;
-  }
-  const rank={'Very High':0,'High':1,'Medium':2,'Low':3};
-  items.slice().sort((a,b)=>(rank[a.priorita]??9)-(rank[b.priorita]??9));
-  return `<div class="grid">${items.map(x=>iCard(x,kind)).join('')}</div>`;
-}
-
+/* ── Card intervento (manutenzione o task) ─────────────────────────── */
 function iCard(x,kind){
   const pc=P_COLOR[x.priorita]||'#9A9183';
   const plbl=P_LBL[x.priorita]||x.priorita||'';
@@ -135,8 +153,14 @@ function iCard(x,kind){
   const wa=via?`https://wa.me/?text=${encodeURIComponent(titolo+' — '+via)}`:'';
   const istr=(x.istruzioni||'').trim();
   const id=x.notion_id;
+  const tbadge=kind==='issue'
+    ? `<span class="tbadge">${ic('wrench')}Manutenzione</span>`
+    : `<span class="tbadge">${ic('clipboard')}Task</span>`;
   return `<div class="icard ${late?'late':''}">
-    ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:''}
+    <div class="prio-row">
+      ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:'<span></span>'}
+      ${tbadge}
+    </div>
     <div class="titolo">${esc(titolo)}</div>
     <div class="dove">
       <div class="lbl">Dove intervenire</div>
