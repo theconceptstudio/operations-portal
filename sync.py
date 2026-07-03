@@ -101,6 +101,33 @@ def sb_upsert(table, rows):
         done += len(chunk)
     return done
 
+def sb_reconcile(table, current_ids):
+    """Rimuove dal mirror le righe non più presenti su Notion (annullate/chiuse/eliminate).
+    Sicuro: non fa nulla se non abbiamo id correnti (evita di svuotare per una fetch fallita)."""
+    if not current_ids or not (SUPABASE_URL and SUPABASE_KEY):
+        return 0
+    h = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
+    r = _session.get(f'{SUPABASE_URL}/rest/v1/{table}', headers=h,
+                     params={'select': 'notion_id'}, timeout=30)
+    if not r.ok:
+        print(f'  [reconcile skip] {table}: {r.status_code}'); return 0
+    mirror_ids = {row['notion_id'] for row in r.json()}
+    orphans = list(mirror_ids - set(current_ids))
+    if not orphans:
+        return 0
+    hd = dict(h, **{'Prefer': 'return=minimal'})
+    removed = 0
+    for i in range(0, len(orphans), 100):
+        chunk = orphans[i:i+100]
+        lst = ','.join(chunk)
+        d = _session.delete(f'{SUPABASE_URL}/rest/v1/{table}', headers=hd,
+                            params={'notion_id': f'in.({lst})'}, timeout=30)
+        if d.ok:
+            removed += len(chunk)
+        else:
+            print(f'  [reconcile del] {table}: {d.status_code} {d.text[:200]}')
+    return removed
+
 # ── Sync ────────────────────────────────────────────────────────────────────
 def sync_operatori():
     pages = n_query(DB_FORNITORI)
@@ -163,7 +190,8 @@ def sync_pulizie(apt_map):
             'early_checkin': chk_of(pr.get('Early Checkin')),
         })
     n = sb_upsert('op_pulizie', rows)
-    print(f'pulizie: {len(rows)} righe, {n} upsert')
+    rm = sb_reconcile('op_pulizie', [r['notion_id'] for r in rows])
+    print(f'pulizie: {len(rows)} attive, {n} upsert, {rm} orfane rimosse')
     return rows
 
 def sync_issues():
@@ -189,7 +217,8 @@ def sync_issues():
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
     n = sb_upsert('op_issues', rows)
-    print(f'issues: {len(rows)} righe aperte, {n} upsert')
+    rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows])
+    print(f'issues: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
     return rows
 
 def sync_tasks():
@@ -220,7 +249,8 @@ def sync_tasks():
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
     n = sb_upsert('op_tasks', rows)
-    print(f'tasks: {len(rows)} righe (con operatore, aperte), {n} upsert')
+    rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows])
+    print(f'tasks: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
     return rows
 
 def main():

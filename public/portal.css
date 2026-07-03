@@ -116,6 +116,28 @@ svg{display:block}
 .fchip.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
 .fchip.on .n{color:var(--greige-soft)}
 
+/* Barra controlli: ordina + vista */
+.ctrl{display:flex;align-items:center;gap:10px;justify-content:space-between;
+  margin:0 2px 18px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--white);border:1px solid var(--line);border-radius:999px;
+  padding:3px}
+.segbtn{font-family:var(--light);font-size:12px;color:var(--greige-text);border:none;background:none;
+  border-radius:999px;padding:7px 13px;cursor:pointer;transition:.16s;white-space:nowrap}
+.segbtn.on{background:var(--ink);color:var(--cream)}
+.vbtn{font-family:var(--light);font-size:12px;color:var(--greige-text);background:var(--white);
+  border:1px solid var(--line);border-radius:999px;padding:7px 13px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px}
+.vbtn .ic{width:15px;height:15px}
+
+/* Sezioni raggruppate (agenda / per appartamento) */
+.section{margin-bottom:24px}
+.sechead{font-family:var(--light);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--greige);margin:0 2px 12px;display:flex;align-items:center;gap:8px}
+.sechead .ic{width:14px;height:14px}
+.sechead.hot{color:var(--p-vh)}
+.sechead.hot .ic{color:var(--p-vh)}
+.sechead .num{font-family:var(--body);color:var(--greige-text)}
+
 /* Card intervento (manutenzioni / task) */
 .tbadge{font-family:var(--light);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
   color:var(--greige-text);background:var(--cream);border-radius:999px;padding:3px 9px;

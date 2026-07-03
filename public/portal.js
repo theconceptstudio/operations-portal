@@ -26,7 +26,8 @@ const ICN = {
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
-let DATA=null, TAB='dafare', FILTER='tutti', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', VIEW='list', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
 function pad(n){ return String(n).padStart(2,'0'); }
@@ -62,8 +63,20 @@ function render(){
 }
 function setTab(t){ TAB=t; render(); }
 function setFilter(f){ FILTER=f; render(); }
+function setSort(s){ SORT=s; render(); }
+function toggleView(){ VIEW=VIEW==='list'?'agenda':'list'; render(); }
 
 /* ── DA FARE (manutenzioni + task uniti, urgenza-first) ────────────── */
+const RANK={'Very High':0,'High':1,'Medium':2,'Low':3};
+function dateOf(x){ return x._kind==='issue'?x.data_intervento:x.due_date; }
+function isLate(x){ const d=dateOf(x); return d && !x.confermato_manutentore && d<todayISO(); }
+function daysBetween(a,b){ return Math.round((parseISO(b)-parseISO(a))/86400000); }
+function dayHead(dISO){
+  if(dISO===todayISO()) return 'Oggi';
+  if(dISO===addDays(todayISO(),1)) return 'Domani';
+  return dLong(dISO);
+}
+
 function viewDaFare(){
   const issues=(DATA.issues||[]).map(x=>({...x, _kind:'issue'}));
   const tasks =(DATA.tasks ||[]).map(x=>({...x, _kind:'task'}));
@@ -77,18 +90,73 @@ function viewDaFare(){
     <button class="fchip ${FILTER==='task'?'on':''}" onclick="setFilter('task')">${ic('clipboard')}Task <span class="n">${tasks.length}</span></button>
   </div>`;
 
+  const ctrl=`<div class="ctrl">
+    <div class="seg">
+      <button class="segbtn ${SORT==='urg'?'on':''}" onclick="setSort('urg')">Urgenza</button>
+      <button class="segbtn ${SORT==='data'?'on':''}" onclick="setSort('data')">Data</button>
+      <button class="segbtn ${SORT==='apt'?'on':''}" onclick="setSort('apt')">Appartamento</button>
+    </div>
+    <button class="vbtn" onclick="toggleView()">${VIEW==='list'?ic('calendar')+'Agenda':ic('clipboard')+'Lista'}</button>
+  </div>`;
+
   if(!items.length){
     return chips+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
   }
-  const rank={'Very High':0,'High':1,'Medium':2,'Low':3};
-  const dateOf=x=>x._kind==='issue'?x.data_intervento:x.due_date;
-  const isLate=x=>{ const d=dateOf(x); return d && !x.confermato_manutentore && d<todayISO(); };
-  items.sort((a,b)=>{
-    if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;                 // in ritardo in cima
-    const r=(rank[a.priorita]??9)-(rank[b.priorita]??9); if(r) return r; // poi urgenza
-    return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999');     // poi data
+
+  let body;
+  if(VIEW==='agenda'){
+    body=renderAgenda(items);
+  }else if(SORT==='apt'){
+    body=renderByApt(items);
+  }else{
+    items.sort((a,b)=>{
+      if(SORT==='data'){ return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); }
+      if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
+      const r=(RANK[a.priorita]??9)-(RANK[b.priorita]??9); if(r) return r;
+      return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999');
+    });
+    body=`<div class="grid">${items.map(x=>iCard(x,x._kind)).join('')}</div>`;
+  }
+  return chips+ctrl+body;
+}
+
+/* Agenda: raggruppa per giorno, "In ritardo" in cima, poi Oggi / Domani / date */
+function renderAgenda(items){
+  const late=items.filter(isLate);
+  const rest=items.filter(x=>!isLate(x));
+  const byDay={}, undated=[];
+  rest.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
+  let out='';
+  if(late.length){
+    late.sort((a,b)=>(dateOf(a)||'').localeCompare(dateOf(b)||''));
+    out+=`<div class="section"><div class="sechead hot">${ic('info')}In ritardo <span class="num">${late.length}</span></div>
+      <div class="grid">${late.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+  }
+  Object.keys(byDay).sort().forEach(d=>{
+    const lst=byDay[d].sort((a,b)=>(RANK[a.priorita]??9)-(RANK[b.priorita]??9));
+    out+=`<div class="section"><div class="sechead">${ic('calendar')}${esc(dayHead(d))} <span class="num">${lst.length}</span></div>
+      <div class="grid">${lst.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
   });
-  return chips+`<div class="grid">${items.map(x=>iCard(x,x._kind)).join('')}</div>`;
+  if(undated.length){
+    out+=`<div class="section"><div class="sechead">${ic('info')}Senza data <span class="num">${undated.length}</span></div>
+      <div class="grid">${undated.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+  }
+  return out;
+}
+
+/* Per appartamento: raggruppa per casa, urgenza dentro */
+function renderByApt(items){
+  const byApt={};
+  items.forEach(x=>{ const k=x.appartamento||'—'; (byApt[k]=byApt[k]||[]).push(x); });
+  return Object.keys(byApt).sort().map(apt=>{
+    const lst=byApt[apt].sort((a,b)=>{
+      if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
+      return (RANK[a.priorita]??9)-(RANK[b.priorita]??9);
+    });
+    const via=lst[0].indirizzo||apt;
+    return `<div class="section"><div class="sechead">${ic('pin')}${esc(via)} <span class="num">${lst.length}</span></div>
+      <div class="grid">${lst.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+  }).join('');
 }
 
 /* ── PULIZIE ───────────────────────────────────────────────────────── */
@@ -147,12 +215,19 @@ function iCard(x,kind){
   const titolo=kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
   const dataRaw=kind==='issue'?x.data_intervento:x.due_date;
   const conf=x.confermato_manutentore;
-  let late=false, dataLbl='';
-  if(dataRaw){ dataLbl=dLong(dataRaw); if(!conf && dataRaw<todayISO()) late=true; }
+  let late=false, dataLbl='', ritardo=0;
+  if(dataRaw){ dataLbl=dLong(dataRaw); if(!conf && dataRaw<todayISO()){ late=true; ritardo=daysBetween(dataRaw,todayISO()); } }
   const via=x.indirizzo||x.appartamento;
-  const wa=via?`https://wa.me/?text=${encodeURIComponent(titolo+' — '+via)}`:'';
-  const istr=(x.istruzioni||'').trim();
   const id=x.notion_id;
+  const tipoLbl=kind==='issue'?'Manutenzione':'Task';
+  // Messaggio WhatsApp precompilato con tutti i dettagli
+  const waLines=[`${tipoLbl}: ${titolo}`, via?`Dove: ${via}`:'',
+    x.appartamento&&x.appartamento!==via?`Appartamento: ${x.appartamento}`:'',
+    plbl?`Priorità: ${plbl}`:'', dataLbl?`Quando: ${dataLbl}${late?' (in ritardo di '+ritardo+'g)':''}`:'',
+    x.stato?`Stato: ${x.stato}`:''].filter(Boolean);
+  const waTarget=OFFICE_WA?`https://wa.me/${OFFICE_WA}`:'https://wa.me/';
+  const wa=`${waTarget}?text=${encodeURIComponent(waLines.join('\n'))}`;
+  const istr=(x.istruzioni||'').trim();
   const tbadge=kind==='issue'
     ? `<span class="tbadge">${ic('wrench')}Manutenzione</span>`
     : `<span class="tbadge">${ic('clipboard')}Task</span>`;
@@ -167,7 +242,7 @@ function iCard(x,kind){
       <div class="via">${esc(via||'—')}</div>
       ${x.appartamento && x.appartamento!==via?`<div class="apt">${esc(x.appartamento)}</div>`:''}
     </div>
-    ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?'In ritardo · ':''}${esc(dataLbl)}</div>`:''}
+    ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?`In ritardo di ${ritardo} giorn${ritardo===1?'o':'i'} · `:''}${esc(dataLbl)}</div>`:''}
     ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
     ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
     <div class="actions">
@@ -191,22 +266,25 @@ async function conferma(kind,id,btn){
   }catch(e){ btn.disabled=false; btn.innerHTML=ic('check')+'Confermo fatto'; toast('Non riuscito, riprova.'); }
 }
 
-/* Foto (solo manutenzioni) */
+/* Foto (solo manutenzioni) — da fotocamera, file o galleria; anche più di una */
 let FOTO_ID=null;
 function pickFoto(id){
   FOTO_ID=id;
   let inp=document.getElementById('fotoInput');
   if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
-    inp.capture='environment'; inp.id='fotoInput'; inp.style.display='none';
+    inp.multiple=true; inp.id='fotoInput'; inp.style.display='none';
     inp.onchange=uploadFoto; document.body.appendChild(inp); }
-  inp.value=''; inp.click();
+  inp.value=''; inp.click();  // niente capture: il telefono chiede Fotocamera / Foto / File
 }
 async function uploadFoto(e){
-  const f=e.target.files[0]; if(!f||!FOTO_ID) return;
-  toast('Carico la foto…');
-  const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('file',f);
-  try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
-    toast(j.ok?'Foto caricata':'Foto non caricata'); }catch(_){ toast('Foto non caricata'); }
+  const files=Array.from(e.target.files||[]); if(!files.length||!FOTO_ID) return;
+  toast(files.length>1?`Carico ${files.length} foto…`:'Carico la foto…');
+  let ok=0;
+  for(const f of files){
+    const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('file',f);
+    try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json(); if(j.ok) ok++; }catch(_){}
+  }
+  toast(ok===files.length?(ok>1?`${ok} foto caricate`:'Foto caricata'):`${ok}/${files.length} caricate`);
 }
 
 function toast(msg){ const t=document.getElementById('toast');
