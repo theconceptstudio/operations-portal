@@ -30,7 +30,7 @@ function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set();
-let OPEN_APTS=new Set(), OVERDUE_OPEN=false;
+let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -92,6 +92,8 @@ function setSort(s){ SORT=s; render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k){ if(OPEN_APTS.has(k)) OPEN_APTS.delete(k); else OPEN_APTS.add(k); render(); }
 function toggleOverdue(){ OVERDUE_OPEN=!OVERDUE_OPEN; render(); }
+function toggleCard(k){ if(OPEN_CARDS.has(k)) OPEN_CARDS.delete(k); else OPEN_CARDS.add(k); render(); }
+function toggleUrg(k){ if(OPEN_URG.has(k)) OPEN_URG.delete(k); else OPEN_URG.add(k); render(); }
 /* Swipe della settimana col dito */
 let _wkX=null;
 function wkTouchStart(e){ _wkX=e.changedTouches[0].clientX; }
@@ -206,22 +208,23 @@ function renderByData(items, overdue){
   return banner + weekStrip(byDay) + day;
 }
 
-/* URGENZA: gruppi per priorità Notion (colore), dentro per data (ritardi prima) */
+/* URGENZA: categorie per priorità (accordion). Tap → esplode. Dentro: ritardi prima, poi data */
 function renderByUrgency(items){
-  const groups=[['Very High','Urgente'],['High','Alta'],['Medium','Media'],['Low','Bassa']];
+  const groups=[['Very High','Urgente'],['High','Alta'],['Medium','Media'],['Low','Bassa'],['_none','Senza priorità']];
   const sortInside=(a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
     return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); };
-  let out='';
-  groups.forEach(([k,lbl])=>{
-    const arr=items.filter(x=>x.priorita===k).sort(sortInside);
-    if(!arr.length) return;
-    const c=P_COLOR[k];
-    out+=`<div class="section"><div class="sechead" style="color:${c}"><span class="pdot" style="background:${c}"></span>${lbl} <span class="num">${arr.length}</span></div>
-      <div class="grid">${arr.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
-  });
-  const none=items.filter(x=>!P_COLOR[x.priorita]).sort(sortInside);
-  if(none.length) out+=sectionHTML('Senza priorità', none, '', ic('info'));
-  return out;
+  return groups.map(([k,lbl])=>{
+    const arr=items.filter(x=> k==='_none' ? !P_COLOR[x.priorita] : x.priorita===k).sort(sortInside);
+    if(!arr.length) return '';
+    const c=k==='_none'?'#9A9183':P_COLOR[k];
+    const lateN=arr.filter(isLate).length;
+    const open=OPEN_URG.has(k);
+    const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
+    const head=`<button class="apthead ${open?'open':''}" onclick="toggleUrg('${k}')">
+        <span class="aptname"><span class="ipdot" style="background:${c}"></span><b style="font-family:var(--body);font-size:15px;color:${c}">${lbl}</b></span>
+        <span class="aptmeta">${badge}<span class="aptn">${arr.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
+    return `<div class="aptgroup">${head}${open?`<div class="grid aptbody">${arr.map(x=>iCard(x,x._kind)).join('')}</div>`:''}</div>`;
+  }).join('');
 }
 
 /* APPARTAMENTO: accordion — lista case con conteggio + ritardi, tap per espandere */
@@ -302,35 +305,40 @@ function iCard(x,kind){
     : `<span class="tbadge">${ic('clipboard')}Task</span>`;
   const key=kind+':'+id;
   const sel=SELMODE && SELECTED.has(key);
-  return `<div class="icard ${late?'late':''} ${SELMODE?'selectable':''} ${sel?'sel':''}" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:''}>
-    <div class="prio-row">
-      ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:''}
-      ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:'<span></span>'}
-      ${late?`<span class="latechip">${ic('clock')}${ritardo}g in ritardo</span>`:''}
-      ${tbadge}
-    </div>
-    <div class="titolo">${esc(titolo)}</div>
-    <div class="dove">
-      <div class="lbl">Dove intervenire</div>
-      <div class="via">${esc(via||'—')}</div>
-      ${x.appartamento && x.appartamento!==via?`<div class="apt">${esc(x.appartamento)}</div>`:''}
-    </div>
-    ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?`In ritardo di ${ritardo} giorn${ritardo===1?'o':'i'} · `:''}${esc(dataLbl)}</div>`:''}
-    ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
-    ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
-    ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
-    ${SELMODE?'':`<div class="actions">
-      <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
-        ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
-      <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto/Video</button>
-      ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
-    </div>
-    ${NOTE_OPEN===key
-      ? `<div class="notebox"><textarea id="nota-${id}" rows="2" placeholder="Scrivi una nota per l'ufficio, es. in attesa della lavanderia"></textarea>
-          <div class="noteact"><button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia nota</button>
-          <button class="btn foto" onclick="closeNota()">Annulla</button></div></div>`
-      : `<button class="notebtn" onclick="openNota('${key}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}`}
-  </div>`;
+  const open=!SELMODE && OPEN_CARDS.has(key);
+  const dueBadge = dataRaw
+    ? `<span class="idue ${late?'late':''}">${ic('calendar')}${esc(dShort(dataRaw))}${late?' · scaduta':''}</span>`
+    : (conf?'':`<span class="idue nodate">${ic('calendar')}senza data</span>`);
+  const lateChip = late?`<span class="latechip">${ritardo}g in ritardo</span>`:'';
+  // Testata compatta (sempre): pallino priorità · via · intervento · scadenza
+  const head=`<div class="ihead" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:`onclick="toggleCard('${key}')"`}>
+      ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:`<span class="ipdot" style="background:${pc}" title="${esc(plbl)}"></span>`}
+      <div class="imain">
+        <div class="ivia">${esc(via||'—')}</div>
+        <div class="isub">${lateChip}${esc(titolo)}</div>
+      </div>
+      <div class="iright">${dueBadge}${SELMODE?'':ic(open?'chevronU':'chevronD')}</div>
+    </div>`;
+  // Dettaglio (solo quando espansa)
+  const body = open ? `<div class="ibody">
+      ${x.appartamento && x.appartamento!==via?`<div class="meta">${ic('pin')}${esc(x.appartamento)}</div>`:''}
+      ${plbl?`<div class="meta">${ic('info')}Priorità: <b style="color:${pc}">${esc(plbl)}</b></div>`:''}
+      ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
+      ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
+      ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
+      <div class="actions">
+        <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
+          ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
+        <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto/Video</button>
+        ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
+      </div>
+      ${NOTE_OPEN===key
+        ? `<div class="notebox"><textarea id="nota-${id}" rows="2" placeholder="Scrivi una nota per l'ufficio, es. in attesa della lavanderia"></textarea>
+            <div class="noteact"><button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia nota</button>
+            <button class="btn foto" onclick="closeNota()">Annulla</button></div></div>`
+        : `<button class="notebtn" onclick="openNota('${key}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}
+    </div>` : '';
+  return `<div class="icard compact ${late?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
 }
 
 /* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */
