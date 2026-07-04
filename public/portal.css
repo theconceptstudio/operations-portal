@@ -180,6 +180,23 @@ svg{display:block}
 .istr .lbl{font-family:var(--light);font-size:8.5px;letter-spacing:2px;text-transform:uppercase;
   color:var(--greige);display:flex;align-items:center;gap:6px;margin-bottom:7px}
 .istr .lbl .ic{width:13px;height:13px}
+.reply,.mynote{border-radius:8px;padding:12px 15px;margin:12px 0;font-size:13px;line-height:1.5;
+  white-space:pre-wrap;color:var(--ink)}
+.reply{background:#edf4ef;border-left:2px solid var(--p-l)}
+.mynote{background:var(--cream);border-left:2px solid var(--greige)}
+.reply .lbl,.mynote .lbl{font-family:var(--light);font-size:8.5px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--greige);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.reply .lbl{color:var(--p-l)}
+.reply .lbl .ic,.mynote .lbl .ic{width:13px;height:13px}
+.notebtn{margin-top:12px;width:100%;background:none;border:1px dashed var(--line-2);border-radius:10px;
+  padding:11px;font-family:var(--light);font-size:12.5px;color:var(--greige-text);cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.notebtn .ic{width:15px;height:15px}
+.notebox{margin-top:12px}
+.notebox textarea{width:100%;border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;
+  font-family:var(--body);font-size:14px;color:var(--ink);resize:vertical;background:var(--white)}
+.notebox textarea:focus{outline:none;border-color:var(--ink)}
+.noteact{display:flex;gap:9px;margin-top:9px}
 .actions{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}
 .btn{flex:1;min-width:130px;border-radius:11px;padding:13px;font-family:var(--body);font-size:13px;
   cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;

@@ -110,6 +110,32 @@ def conferma(token):
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True})
 
+@app.route('/api/o/<token>/nota', methods=['POST'])
+def nota(token):
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True)
+    kind = d.get('kind') or 'issue'
+    item_id = d.get('id')
+    testo = (d.get('testo') or '').strip()
+    if not (item_id and testo): return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
+    table = 'op_tasks' if kind == 'task' else 'op_issues'
+    try:
+        page = n_get(item_id)
+        rt = (page.get('properties', {}).get('Note operatore', {}) or {}).get('rich_text', []) or []
+        existing = ''.join(t.get('plain_text', '') for t in rt)
+        stamp = datetime.date.today().strftime('%d/%m')
+        nuovo = (existing + '\n' if existing else '') + f'[{stamp}] {testo}'
+        nuovo = nuovo[-1990:]  # limite rich_text Notion
+        n_patch(item_id, {'Note operatore': {'rich_text': [{'text': {'content': nuovo}}]}})
+        _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
+                       headers=_sb_headers({'Prefer': 'return=minimal'}),
+                       params={'notion_id': f'eq.{item_id}'},
+                       json={'note_operatore': nuovo}, timeout=20)
+    except requests.HTTPError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, 'note_operatore': nuovo})
+
 @app.route('/api/o/<token>/foto', methods=['POST'])
 def foto(token):
     op = operatore_by_token(token)

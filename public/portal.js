@@ -27,6 +27,7 @@ const ICN = {
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let NOTE_OPEN=null;
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -52,7 +53,7 @@ async function load(){
    Silenzioso (niente "Carico…"), preserva tab/filtro/giorno; salta se c'è un annullo in corso. */
 let _refreshing=false;
 async function silentRefresh(){
-  if(_refreshing || PENDING || document.hidden) return;
+  if(_refreshing || PENDING || NOTE_OPEN || document.hidden) return;
   _refreshing=true;
   try{
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
@@ -252,12 +253,19 @@ function iCard(x,kind){
     ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?`In ritardo di ${ritardo} giorn${ritardo===1?'o':'i'} · `:''}${esc(dataLbl)}</div>`:''}
     ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
     ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
+    ${(x.risposta_ufficio||'').trim()?`<div class="reply"><span class="lbl">${ic('message')}Risposta ufficio</span>${esc(x.risposta_ufficio.trim())}</div>`:''}
+    ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
     <div class="actions">
       <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
         ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
+      <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto/Video</button>
       ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
-      ${kind==='issue'?`<button class="btn foto" onclick="pickFoto('${id}')">${ic('camera')}Foto</button>`:''}
     </div>
+    ${NOTE_OPEN===kind+':'+id
+      ? `<div class="notebox"><textarea id="nota-${id}" rows="2" placeholder="Scrivi una nota per l'ufficio, es. in attesa della lavanderia"></textarea>
+          <div class="noteact"><button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia nota</button>
+          <button class="btn foto" onclick="closeNota()">Annulla</button></div></div>`
+      : `<button class="notebtn" onclick="openNota('${kind}:${id}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}
   </div>`;
 }
 
@@ -293,25 +301,43 @@ function undoConferma(){
   toast('Annullato');
 }
 
-/* Foto (solo manutenzioni) — da fotocamera, file o galleria; anche più di una */
-let FOTO_ID=null;
-function pickFoto(id){
-  FOTO_ID=id;
+/* Nota operatore ↔ ufficio */
+function openNota(key){ NOTE_OPEN=key; render();
+  const id=key.split(':')[1]; const t=document.getElementById('nota-'+id); if(t) t.focus(); }
+function closeNota(){ NOTE_OPEN=null; render(); }
+async function sendNota(kind,id){
+  const t=document.getElementById('nota-'+id); const testo=(t&&t.value||'').trim();
+  if(!testo){ toast('Scrivi qualcosa prima di inviare'); return; }
+  NOTE_OPEN=null;
+  const arr=kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===id);
+  try{
+    const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind,id,testo})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    if(it) it.note_operatore=j.note_operatore; toast("Nota inviata all'ufficio"); render();
+  }catch(e){ toast('Nota non inviata, riprova'); render(); }
+}
+
+/* Foto/Video — da fotocamera, file o galleria; anche più di uno. Vale per manutenzioni e task */
+let FOTO_KIND=null, FOTO_ID=null;
+function pickFoto(kind,id){
+  FOTO_KIND=kind; FOTO_ID=id;
   let inp=document.getElementById('fotoInput');
-  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,video/*';
     inp.multiple=true; inp.id='fotoInput'; inp.style.display='none';
     inp.onchange=uploadFoto; document.body.appendChild(inp); }
   inp.value=''; inp.click();  // niente capture: il telefono chiede Fotocamera / Foto / File
 }
 async function uploadFoto(e){
   const files=Array.from(e.target.files||[]); if(!files.length||!FOTO_ID) return;
-  toast(files.length>1?`Carico ${files.length} foto…`:'Carico la foto…');
+  toast(files.length>1?`Carico ${files.length} file…`:'Carico il file…');
   let ok=0;
   for(const f of files){
-    const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('file',f);
+    const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('kind',FOTO_KIND||'issue'); fd.append('file',f);
     try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json(); if(j.ok) ok++; }catch(_){}
   }
-  toast(ok===files.length?(ok>1?`${ok} foto caricate`:'Foto caricata'):`${ok}/${files.length} caricate`);
+  toast(ok===files.length?(ok>1?`${ok} file caricati`:'File caricato'):`${ok}/${files.length} caricati`);
 }
 
 function toast(msg){ const t=document.getElementById('toast');
