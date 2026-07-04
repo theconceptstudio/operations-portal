@@ -17,6 +17,8 @@ const ICN = {
   message:'<path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 20.5l1.5-5.5A8.5 8.5 0 1 1 21 11.5Z"/>',
   chevronL:'<path d="m15 6-6 6 6 6"/>',
   chevronR:'<path d="m9 6 6 6-6 6"/>',
+  chevronD:'<path d="m6 9 6 6 6-6"/>',
+  chevronU:'<path d="m6 15 6-6 6 6"/>',
   pin:'<path d="M20 10c0 5.5-8 11-8 11s-8-5.5-8-11a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>',
   wrench:'<path d="M15 6a4 4 0 0 0 5.2 5.2L14 17.4a2.3 2.3 0 0 1-3.3-3.3L16.8 8A4 4 0 0 0 15 6l-3 3-2-2 3-3Z"/>',
   sparkles:'<path d="M12 4l1.6 4.9L18.5 10.5 13.6 12.1 12 17l-1.6-4.9L5.5 10.5l4.9-1.6z"/><path d="M18 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
@@ -26,8 +28,9 @@ const ICN = {
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
-let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set();
+let OPEN_APTS=new Set(), OVERDUE_OPEN=false;
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -87,6 +90,13 @@ function setTab(t){ TAB=t; render(); }
 function setFilter(f){ FILTER=f; render(); }
 function setSort(s){ SORT=s; render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
+function toggleApt(k){ if(OPEN_APTS.has(k)) OPEN_APTS.delete(k); else OPEN_APTS.add(k); render(); }
+function toggleOverdue(){ OVERDUE_OPEN=!OVERDUE_OPEN; render(); }
+/* Swipe della settimana col dito */
+let _wkX=null;
+function wkTouchStart(e){ _wkX=e.changedTouches[0].clientX; }
+function wkTouchEnd(e){ if(_wkX==null) return; const dx=e.changedTouches[0].clientX-_wkX; _wkX=null;
+  if(Math.abs(dx)>45) shiftWeek(dx<0?1:-1); }
 
 /* Conferma multipla */
 function toggleSelMode(){ SELMODE=!SELMODE; SELECTED.clear(); render(); }
@@ -129,7 +139,7 @@ function weekStrip(byDay){
     ? `<button class="oggi-btn" onclick="goOggi()">${ic('calendar')}Oggi</button>` : '';
   return `<div class="wkhead"><span class="wklbl">${ic('calendar')}Settimana · ${range}</span>${oggiBtn}</div>
     <div class="wk"><button class="nav" onclick="shiftWeek(-1)">${ic('chevronL')}</button>
-    <div class="days">${days}</div>
+    <div class="days" ontouchstart="wkTouchStart(event)" ontouchend="wkTouchEnd(event)">${days}</div>
     <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></div>`;
 }
 function sectionHTML(title, arr, cls, icon){
@@ -164,40 +174,70 @@ function viewDaFare(){
     <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma fatte</button></div>` : '';
 
   const overdue=items.filter(isLate).sort(byPrio);
-  const onTime=items.filter(x=>!isLate(x));
-  const lateSec = overdue.length ? sectionHTML('In ritardo', overdue, 'hot', ic('info')) : '';
 
   let body;
   if(SORT==='apt'){
     body=renderByApt(items);
   }else if(SORT==='data'){
-    const byDay={}, undated=[];
-    onTime.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
-    const list=(byDay[SEL]||[]).slice().sort(byPrio);
-    let day=`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} da fare</span></div>`;
-    day += list.length
-      ? `<div class="grid">${list.map(x=>iCard(x,x._kind)).join('')}</div>`
-      : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
-    if(undated.length) day += sectionHTML('Senza data', undated.sort(byPrio), '', ic('info'));
-    body = lateSec + weekStrip(byDay) + day;
-  }else{ // urgenza
-    body = lateSec + `<div class="grid">${onTime.slice().sort(byPrio).map(x=>iCard(x,x._kind)).join('')}</div>`;
+    body=renderByData(items, overdue);
+  }else{
+    body=renderByUrgency(items);
   }
   return chips+ctrl+body+selbar;
 }
 
-/* Per appartamento: raggruppa per casa, urgenza dentro */
+/* DATA: banner ritardi (apri/chiudi) → settimana scorribile → giorno scelto */
+function renderByData(items, overdue){
+  const onTime=items.filter(x=>!isLate(x));
+  const byDay={}, undated=[];
+  onTime.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
+  let banner='';
+  if(overdue.length){
+    banner=`<button class="latebanner ${OVERDUE_OPEN?'open':''}" onclick="toggleOverdue()">
+        <span>${ic('info')}${overdue.length} in ritardo</span>${ic(OVERDUE_OPEN?'chevronU':'chevronD')}</button>`;
+    if(OVERDUE_OPEN) banner+=`<div class="grid" style="margin-bottom:22px">${overdue.map(x=>iCard(x,x._kind)).join('')}</div>`;
+  }
+  const list=(byDay[SEL]||[]).slice().sort(byPrio);
+  let day=`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} da fare</span></div>`;
+  day += list.length
+    ? `<div class="grid">${list.map(x=>iCard(x,x._kind)).join('')}</div>`
+    : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
+  if(undated.length) day += sectionHTML('Senza data', undated.sort((a,b)=>(dateOf(a)||'').localeCompare(dateOf(b)||'')), '', ic('info'));
+  return banner + weekStrip(byDay) + day;
+}
+
+/* URGENZA: gruppi per priorità Notion (colore), dentro per data (ritardi prima) */
+function renderByUrgency(items){
+  const groups=[['Very High','Urgente'],['High','Alta'],['Medium','Media'],['Low','Bassa']];
+  const sortInside=(a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
+    return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); };
+  let out='';
+  groups.forEach(([k,lbl])=>{
+    const arr=items.filter(x=>x.priorita===k).sort(sortInside);
+    if(!arr.length) return;
+    const c=P_COLOR[k];
+    out+=`<div class="section"><div class="sechead" style="color:${c}"><span class="pdot" style="background:${c}"></span>${lbl} <span class="num">${arr.length}</span></div>
+      <div class="grid">${arr.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+  });
+  const none=items.filter(x=>!P_COLOR[x.priorita]).sort(sortInside);
+  if(none.length) out+=sectionHTML('Senza priorità', none, '', ic('info'));
+  return out;
+}
+
+/* APPARTAMENTO: accordion — lista case con conteggio + ritardi, tap per espandere */
 function renderByApt(items){
   const byApt={};
   items.forEach(x=>{ const k=x.appartamento||'—'; (byApt[k]=byApt[k]||[]).push(x); });
   return Object.keys(byApt).sort().map(apt=>{
-    const lst=byApt[apt].sort((a,b)=>{
-      if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
-      return byPrio(a,b);
-    });
+    const lst=byApt[apt].sort((a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1; return byPrio(a,b); });
     const via=lst[0].indirizzo||apt;
-    return `<div class="section"><div class="sechead">${ic('pin')}${esc(via)} <span class="num">${lst.length}</span></div>
-      <div class="grid">${lst.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+    const lateN=lst.filter(isLate).length;
+    const open=OPEN_APTS.has(apt);
+    const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
+    const head=`<button class="apthead ${open?'open':''}" onclick="toggleApt('${apt.replace(/'/g,"\\'")}')">
+        <span class="aptname">${ic('pin')}<b>${esc(via)}</b>${via!==apt?`<span class="aptsub">${esc(apt)}</span>`:''}</span>
+        <span class="aptmeta">${badge}<span class="aptn">${lst.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
+    return `<div class="aptgroup">${head}${open?`<div class="grid aptbody">${lst.map(x=>iCard(x,x._kind)).join('')}</div>`:''}</div>`;
   }).join('');
 }
 
@@ -266,6 +306,7 @@ function iCard(x,kind){
     <div class="prio-row">
       ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:''}
       ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:'<span></span>'}
+      ${late?`<span class="latechip">${ic('clock')}${ritardo}g in ritardo</span>`:''}
       ${tbadge}
     </div>
     <div class="titolo">${esc(titolo)}</div>
