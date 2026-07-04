@@ -138,6 +138,23 @@ svg{display:block}
   border:1px solid var(--line);border-radius:999px;padding:7px 13px;cursor:pointer;
   display:inline-flex;align-items:center;gap:6px}
 .vbtn .ic{width:15px;height:15px}
+.vbtn.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+
+/* Conferma multipla */
+.icard.selectable{cursor:pointer;transition:.15s}
+.icard.selectable.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
+.selbox{width:22px;height:22px;border:1.5px solid var(--line-2);border-radius:7px;flex:none;
+  display:inline-flex;align-items:center;justify-content:center;color:#fff}
+.icard.sel .selbox{background:var(--ink);border-color:var(--ink)}
+.selbox .ic{width:14px;height:14px}
+.selbar{position:sticky;bottom:14px;margin:16px 0 4px;background:var(--ink);color:var(--cream);
+  border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;box-shadow:0 6px 20px rgba(43,22,15,.22);z-index:22}
+.selbar span{font-family:var(--light);font-size:13px}
+.selconf{background:var(--cream);color:var(--ink);border:none;border-radius:9px;padding:10px 16px;
+  font-family:var(--body);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.selconf .ic{width:16px;height:16px}
+.selconf:disabled{opacity:.5;cursor:default}
 
 /* Sezioni raggruppate (agenda / per appartamento) */
 .section{margin-bottom:24px}

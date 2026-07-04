@@ -27,7 +27,7 @@ const ICN = {
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', SEL=todayISO(), WEEK0=mondayOf(todayISO());
-let NOTE_OPEN=null;
+let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set();
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -53,7 +53,7 @@ async function load(){
    Silenzioso (niente "Carico…"), preserva tab/filtro/giorno; salta se c'è un annullo in corso. */
 let _refreshing=false;
 async function silentRefresh(){
-  if(_refreshing || PENDING || NOTE_OPEN || document.hidden) return;
+  if(_refreshing || PENDING || NOTE_OPEN || SELMODE || document.hidden) return;
   _refreshing=true;
   try{
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
@@ -87,6 +87,24 @@ function setTab(t){ TAB=t; render(); }
 function setFilter(f){ FILTER=f; render(); }
 function setSort(s){ SORT=s; render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
+
+/* Conferma multipla */
+function toggleSelMode(){ SELMODE=!SELMODE; SELECTED.clear(); render(); }
+function toggleSel(kind,id){ const k=kind+':'+id; if(SELECTED.has(k)) SELECTED.delete(k); else SELECTED.add(k); render(); }
+async function confermaMulti(){
+  const keys=[...SELECTED]; if(!keys.length) return;
+  SELMODE=false; SELECTED=new Set();
+  // ottimistico
+  keys.forEach(k=>{ const [kind,id]=k.split(':'); const arr=kind==='issue'?DATA.issues:DATA.tasks;
+    const it=(arr||[]).find(x=>x.notion_id===id); if(it) it.confermato_manutentore=true; });
+  render(); toast(`Confermo ${keys.length}…`);
+  let ok=0;
+  for(const k of keys){ const [kind,id]=k.split(':');
+    try{ const r=await fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind,id})}); const j=await r.json(); if(j.ok) ok++; }catch(_){}
+  }
+  toast(ok===keys.length?`${ok} confermate`:`${ok}/${keys.length} confermate`);
+}
 
 /* ── Helpers comuni ───────────────────────────────────────────────── */
 const RANK={'Very High':0,'High':1,'Medium':2,'Low':3};
@@ -136,11 +154,14 @@ function viewDaFare(){
       <button class="segbtn ${SORT==='urg'?'on':''}" onclick="setSort('urg')">Urgenza</button>
       <button class="segbtn ${SORT==='data'?'on':''}" onclick="setSort('data')">Data</button>
       <button class="segbtn ${SORT==='apt'?'on':''}" onclick="setSort('apt')">Appartamento</button>
-    </div></div>`;
+    </div>
+    <button class="vbtn ${SELMODE?'on':''}" onclick="toggleSelMode()">${ic('check')}${SELMODE?'Annulla':'Seleziona'}</button></div>`;
 
   if(!items.length){
     return chips+ctrl+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
   }
+  const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} selezionat${SELECTED.size===1?'a':'e'}</span>
+    <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma fatte</button></div>` : '';
 
   const overdue=items.filter(isLate).sort(byPrio);
   const onTime=items.filter(x=>!isLate(x));
@@ -162,7 +183,7 @@ function viewDaFare(){
   }else{ // urgenza
     body = lateSec + `<div class="grid">${onTime.slice().sort(byPrio).map(x=>iCard(x,x._kind)).join('')}</div>`;
   }
-  return chips+ctrl+body;
+  return chips+ctrl+body+selbar;
 }
 
 /* Per appartamento: raggruppa per casa, urgenza dentro */
@@ -239,8 +260,11 @@ function iCard(x,kind){
   const tbadge=kind==='issue'
     ? `<span class="tbadge">${ic('wrench')}Manutenzione</span>`
     : `<span class="tbadge">${ic('clipboard')}Task</span>`;
-  return `<div class="icard ${late?'late':''}">
+  const key=kind+':'+id;
+  const sel=SELMODE && SELECTED.has(key);
+  return `<div class="icard ${late?'late':''} ${SELMODE?'selectable':''} ${sel?'sel':''}" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:''}>
     <div class="prio-row">
+      ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:''}
       ${plbl?`<span class="prio" style="color:${pc}"><span class="d" style="background:${pc}"></span>${esc(plbl)}</span>`:'<span></span>'}
       ${tbadge}
     </div>
@@ -253,19 +277,18 @@ function iCard(x,kind){
     ${dataLbl?`<div class="meta ${late?'overdue':''}">${ic('calendar')}${late?`In ritardo di ${ritardo} giorn${ritardo===1?'o':'i'} · `:''}${esc(dataLbl)}</div>`:''}
     ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
     ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
-    ${(x.risposta_ufficio||'').trim()?`<div class="reply"><span class="lbl">${ic('message')}Risposta ufficio</span>${esc(x.risposta_ufficio.trim())}</div>`:''}
     ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
-    <div class="actions">
+    ${SELMODE?'':`<div class="actions">
       <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
         ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
       <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto/Video</button>
       ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
     </div>
-    ${NOTE_OPEN===kind+':'+id
+    ${NOTE_OPEN===key
       ? `<div class="notebox"><textarea id="nota-${id}" rows="2" placeholder="Scrivi una nota per l'ufficio, es. in attesa della lavanderia"></textarea>
           <div class="noteact"><button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia nota</button>
           <button class="btn foto" onclick="closeNota()">Annulla</button></div></div>`
-      : `<button class="notebtn" onclick="openNota('${kind}:${id}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}
+      : `<button class="notebtn" onclick="openNota('${key}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}`}
   </div>`;
 }
 
