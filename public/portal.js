@@ -26,7 +26,7 @@ const ICN = {
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
-let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', VIEW='list', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let DATA=null, TAB='dafare', FILTER='tutti', SORT='urg', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -78,26 +78,47 @@ function render(){
   document.getElementById('app').innerHTML=
     `<div class="tabs"><div class="wrap">
       <button class="tab ${TAB==='dafare'?'on':''}" onclick="setTab('dafare')">${ic('clipboard')}Da fare <span class="n">${c.m+c.t}</span></button>
-      <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie <span class="n">${c.p}</span></button>
+      <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie</button>
     </div></div>
     <div class="content">${TAB==='dafare'?viewDaFare():viewPulizie()}</div>`;
 }
 function setTab(t){ TAB=t; render(); }
 function setFilter(f){ FILTER=f; render(); }
 function setSort(s){ SORT=s; render(); }
-function toggleView(){ VIEW=VIEW==='list'?'agenda':'list'; render(); }
+function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 
-/* ── DA FARE (manutenzioni + task uniti, urgenza-first) ────────────── */
+/* ── Helpers comuni ───────────────────────────────────────────────── */
 const RANK={'Very High':0,'High':1,'Medium':2,'Low':3};
 function dateOf(x){ return x._kind==='issue'?x.data_intervento:x.due_date; }
 function isLate(x){ const d=dateOf(x); return d && !x.confermato_manutentore && d<todayISO(); }
 function daysBetween(a,b){ return Math.round((parseISO(b)-parseISO(a))/86400000); }
-function dayHead(dISO){
-  if(dISO===todayISO()) return 'Oggi';
-  if(dISO===addDays(todayISO(),1)) return 'Domani';
-  return dLong(dISO);
+function byPrio(a,b){ return (RANK[a.priorita]??9)-(RANK[b.priorita]??9); }
+
+/* Striscia settimana cliccabile, condivisa Pulizie/Da fare.
+   byDay: mappa dataISO -> array (per i puntini). Oggi evidenziato, tasto "Oggi". */
+function weekStrip(byDay){
+  let days='';
+  for(let i=0;i<7;i++){
+    const dISO=addDays(WEEK0,i), d=parseISO(dISO), n=(byDay[dISO]||[]).length;
+    const cls=[dISO===SEL?'on':'', dISO===todayISO()?'today':''].join(' ').trim();
+    days+=`<div class="day ${cls}" onclick="pick('${dISO}')">
+      <div class="dow">${DOW[d.getDay()]}</div><div class="dnum">${d.getDate()}</div>
+      ${n?'<div class="dot"></div>':'<div class="empty"></div>'}</div>`;
+  }
+  const range=`${dShort(WEEK0)} – ${dShort(addDays(WEEK0,6))}`;
+  const oggiBtn = WEEK0!==mondayOf(todayISO())
+    ? `<button class="oggi-btn" onclick="goOggi()">${ic('calendar')}Oggi</button>` : '';
+  return `<div class="wkhead"><span class="wklbl">${ic('calendar')}Settimana · ${range}</span>${oggiBtn}</div>
+    <div class="wk"><button class="nav" onclick="shiftWeek(-1)">${ic('chevronL')}</button>
+    <div class="days">${days}</div>
+    <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></div>`;
+}
+function sectionHTML(title, arr, cls, icon){
+  return `<div class="section"><div class="sechead ${cls||''}">${icon||''}${esc(title)} <span class="num">${arr.length}</span></div>
+    <div class="grid">${arr.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
 }
 
+/* ── DA FARE (manutenzioni + task uniti) ──────────────────────────── */
 function viewDaFare(){
   const issues=(DATA.issues||[]).map(x=>({...x, _kind:'issue'}));
   const tasks =(DATA.tasks ||[]).map(x=>({...x, _kind:'task'}));
@@ -110,59 +131,37 @@ function viewDaFare(){
     <button class="fchip ${FILTER==='manut'?'on':''}" onclick="setFilter('manut')">${ic('wrench')}Manutenzioni <span class="n">${issues.length}</span></button>
     <button class="fchip ${FILTER==='task'?'on':''}" onclick="setFilter('task')">${ic('clipboard')}Task <span class="n">${tasks.length}</span></button>
   </div>`;
-
-  const ctrl=`<div class="ctrl">
-    <div class="seg">
+  const ctrl=`<div class="ctrl"><div class="seg">
       <button class="segbtn ${SORT==='urg'?'on':''}" onclick="setSort('urg')">Urgenza</button>
       <button class="segbtn ${SORT==='data'?'on':''}" onclick="setSort('data')">Data</button>
       <button class="segbtn ${SORT==='apt'?'on':''}" onclick="setSort('apt')">Appartamento</button>
-    </div>
-    <button class="vbtn" onclick="toggleView()">${VIEW==='list'?ic('calendar')+'Agenda':ic('clipboard')+'Lista'}</button>
-  </div>`;
+    </div></div>`;
 
   if(!items.length){
-    return chips+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
+    return chips+ctrl+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
   }
+
+  const overdue=items.filter(isLate).sort(byPrio);
+  const onTime=items.filter(x=>!isLate(x));
+  const lateSec = overdue.length ? sectionHTML('In ritardo', overdue, 'hot', ic('info')) : '';
 
   let body;
-  if(VIEW==='agenda'){
-    body=renderAgenda(items);
-  }else if(SORT==='apt'){
+  if(SORT==='apt'){
     body=renderByApt(items);
-  }else{
-    items.sort((a,b)=>{
-      if(SORT==='data'){ return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); }
-      if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
-      const r=(RANK[a.priorita]??9)-(RANK[b.priorita]??9); if(r) return r;
-      return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999');
-    });
-    body=`<div class="grid">${items.map(x=>iCard(x,x._kind)).join('')}</div>`;
+  }else if(SORT==='data'){
+    const byDay={}, undated=[];
+    onTime.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
+    const list=(byDay[SEL]||[]).slice().sort(byPrio);
+    let day=`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} da fare</span></div>`;
+    day += list.length
+      ? `<div class="grid">${list.map(x=>iCard(x,x._kind)).join('')}</div>`
+      : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
+    if(undated.length) day += sectionHTML('Senza data', undated.sort(byPrio), '', ic('info'));
+    body = lateSec + weekStrip(byDay) + day;
+  }else{ // urgenza
+    body = lateSec + `<div class="grid">${onTime.slice().sort(byPrio).map(x=>iCard(x,x._kind)).join('')}</div>`;
   }
   return chips+ctrl+body;
-}
-
-/* Agenda: raggruppa per giorno, "In ritardo" in cima, poi Oggi / Domani / date */
-function renderAgenda(items){
-  const late=items.filter(isLate);
-  const rest=items.filter(x=>!isLate(x));
-  const byDay={}, undated=[];
-  rest.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
-  let out='';
-  if(late.length){
-    late.sort((a,b)=>(dateOf(a)||'').localeCompare(dateOf(b)||''));
-    out+=`<div class="section"><div class="sechead hot">${ic('info')}In ritardo <span class="num">${late.length}</span></div>
-      <div class="grid">${late.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
-  }
-  Object.keys(byDay).sort().forEach(d=>{
-    const lst=byDay[d].sort((a,b)=>(RANK[a.priorita]??9)-(RANK[b.priorita]??9));
-    out+=`<div class="section"><div class="sechead">${ic('calendar')}${esc(dayHead(d))} <span class="num">${lst.length}</span></div>
-      <div class="grid">${lst.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
-  });
-  if(undated.length){
-    out+=`<div class="section"><div class="sechead">${ic('info')}Senza data <span class="num">${undated.length}</span></div>
-      <div class="grid">${undated.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
-  }
-  return out;
 }
 
 /* Per appartamento: raggruppa per casa, urgenza dentro */
@@ -172,7 +171,7 @@ function renderByApt(items){
   return Object.keys(byApt).sort().map(apt=>{
     const lst=byApt[apt].sort((a,b)=>{
       if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
-      return (RANK[a.priorita]??9)-(RANK[b.priorita]??9);
+      return byPrio(a,b);
     });
     const via=lst[0].indirizzo||apt;
     return `<div class="section"><div class="sechead">${ic('pin')}${esc(via)} <span class="num">${lst.length}</span></div>
@@ -184,19 +183,6 @@ function renderByApt(items){
 function viewPulizie(){
   const puliz=(DATA.pulizie||[]).filter(x=>x.stato!=='Annullata');
   const byDay={}; puliz.forEach(p=>{ if(p.data) (byDay[p.data]=byDay[p.data]||[]).push(p); });
-  let days='';
-  for(let i=0;i<7;i++){
-    const dISO=addDays(WEEK0,i), d=parseISO(dISO), n=(byDay[dISO]||[]).length;
-    days+=`<div class="day ${dISO===SEL?'on':''} ${dISO===todayISO()?'today':''}" onclick="pick('${dISO}')">
-      <div class="dow">${DOW[d.getDay()]}</div><div class="dnum">${d.getDate()}</div>
-      ${n?'<div class="dot"></div>':'<div class="empty"></div>'}</div>`;
-  }
-  const range=`${dShort(WEEK0)} – ${dShort(addDays(WEEK0,6))}`;
-  const strip=`<div class="wklbl">${ic('calendar')} Settimana · ${range}</div>
-    <div class="wk"><button class="nav" onclick="shiftWeek(-1)">${ic('chevronL')}</button>
-    <div class="days">${days}</div>
-    <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></div>`;
-
   const list=(byDay[SEL]||[]).slice().sort((a,b)=>(a.inizio||'').localeCompare(b.inizio||''));
   let body;
   if(!list.length){
@@ -204,7 +190,7 @@ function viewPulizie(){
   }else{
     body=`<div class="grid">${list.map(pCard).join('')}</div>`;
   }
-  return strip+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
+  return weekStrip(byDay)+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
 }
 
 function pCard(p){

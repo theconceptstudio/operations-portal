@@ -50,8 +50,14 @@ svg{display:block}
 .loading{padding:70px 0;text-align:center;color:var(--greige);font-family:var(--light)}
 
 /* Striscia settimana */
+.wkhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 2px 12px}
 .wklbl{font-family:var(--light);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
-  color:var(--greige);margin:2px 2px 12px;display:flex;align-items:center;gap:8px}
+  color:var(--greige);display:flex;align-items:center;gap:8px}
+.wklbl .ic{width:14px;height:14px}
+.oggi-btn{font-family:var(--body);font-size:11.5px;color:var(--ink);background:var(--white);
+  border:1px solid var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.oggi-btn .ic{width:14px;height:14px}
 .wk{display:flex;align-items:center;gap:8px;margin-bottom:22px}
 .wk .nav{background:var(--white);color:var(--ink);border:1px solid var(--line-2);width:36px;
   height:36px;border-radius:50%;cursor:pointer;flex:none;display:flex;align-items:center;
@@ -71,7 +77,11 @@ svg{display:block}
 .day.on .dow{color:var(--greige-soft)}
 .day.on .dnum{color:var(--cream)}
 .day.on .dot{background:var(--cream)}
-.day.today:not(.on){border-color:var(--greige-soft)}
+.day.today:not(.on){border-color:var(--ink);box-shadow:0 3px 10px rgba(43,22,15,.14)}
+.day.today:not(.on) .dnum{color:var(--ink)}
+.day.today:not(.on)::after{content:'oggi';display:block;font-family:var(--light);font-size:7.5px;
+  letter-spacing:.5px;text-transform:uppercase;color:var(--ink);margin-top:2px}
+.day.today:not(.on) .dot,.day.today:not(.on) .empty{display:none}
 
 .daylbl{font-family:var(--disp);font-weight:200;font-size:22px;color:var(--ink);
   margin:0 2px 16px;display:flex;align-items:baseline;gap:10px}
