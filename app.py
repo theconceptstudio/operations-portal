@@ -4,7 +4,8 @@ Operations Portal — app operatori/manutentori (Flask).
 Accesso senza password via link /o/<token>. Legge il mirror Supabase (op_*),
 scrive su Notion solo le conferme (staff propone, ufficio dispone).
 """
-import os, datetime
+import os, datetime, time
+from concurrent.futures import ThreadPoolExecutor
 import requests
 from flask import Flask, request, jsonify, send_from_directory, redirect
 
@@ -45,8 +46,19 @@ def sb_get(table, params):
     return r.json() if r.ok else []
 
 def operatore_by_token(token):
-    rows = sb_get('op_operatori', {'token': f'eq.{token}', 'select': '*', 'limit': '1'})
+    rows = sb_get('op_operatori', {'token': f'eq.{token}', 'select': 'notion_id,nome,token', 'limit': '1'})
     return rows[0] if rows else None
+
+# Cache appartamenti (tabellina, cambia raramente) — TTL 5 min
+_apt_cache = {'ts': 0, 'map': {}}
+def apt_map():
+    now = time.time()
+    if now - _apt_cache['ts'] > 300 or not _apt_cache['map']:
+        rows = sb_get('op_appartamenti', {'select': 'notion_id,nome,indirizzo'})
+        if rows:
+            _apt_cache['map'] = {a['notion_id']: a for a in rows}
+            _apt_cache['ts'] = now
+    return _apt_cache['map']
 
 def n_patch(page_id, props):
     pid = page_id.replace('-', '')
@@ -76,17 +88,29 @@ def op_data(token):
     op = operatore_by_token(token)
     if not op: return jsonify({'error': 'token'}), 404
     oid = op['notion_id']
-    pulizie = sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'data.asc'})
-    issues  = sb_get('op_issues',  {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'data_intervento.asc'})
-    tasks   = sb_get('op_tasks',   {'operatore_notion_id': f'eq.{oid}', 'select': '*', 'order': 'due_date.asc'})
-    # arricchisci con nome + indirizzo appartamento
-    apt = {a['notion_id']: a for a in sb_get('op_appartamenti', {'select': 'notion_id,nome,indirizzo'})}
+    today = datetime.date.today()
+    start = (today - datetime.timedelta(days=21)).isoformat()   # finestra: pulizie recenti + prossime
+    end   = (today + datetime.timedelta(days=60)).isoformat()
+    PCOLS = 'notion_id,appartamento_notion_id,data,tipo,stato,inizio,fine,deposito,late_checkout,early_checkin'
+    ICOLS = 'notion_id,descrizione,appartamento_notion_id,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time'
+    TCOLS = 'notion_id,nome,appartamento_notion_id,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time'
+    gp = lambda: sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}',
+        'and': f'(data.gte.{start},data.lte.{end})', 'select': PCOLS, 'order': 'data.asc'})
+    gi = lambda: sb_get('op_issues', {'operatore_notion_id': f'eq.{oid}', 'select': ICOLS, 'order': 'data_intervento.asc'})
+    gt = lambda: sb_get('op_tasks',  {'operatore_notion_id': f'eq.{oid}', 'select': TCOLS, 'order': 'due_date.asc'})
+    # chiamate al DB in parallelo
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        fp, fi, ft = ex.submit(gp), ex.submit(gi), ex.submit(gt)
+        pulizie, issues, tasks = fp.result(), fi.result(), ft.result()
+    apt = apt_map()
     for x in pulizie + issues + tasks:
         a = apt.get(x.get('appartamento_notion_id'))
         x['appartamento'] = (a or {}).get('nome') or '—'
         x['indirizzo'] = (a or {}).get('indirizzo') or ''
-    return jsonify({'operatore': op.get('nome'), 'oggi': datetime.date.today().isoformat(),
+    resp = jsonify({'operatore': op.get('nome'), 'oggi': today.isoformat(),
                     'pulizie': pulizie, 'issues': issues, 'tasks': tasks})
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 @app.route('/api/o/<token>/conferma', methods=['POST'])
 def conferma(token):

@@ -43,24 +43,29 @@ function dLong(s){ const d=parseISO(s); return DOW[d.getDay()]+' '+d.getDate()+'
 function dShort(s){ const d=parseISO(s); return d.getDate()+' '+MESI3[d.getMonth()]; }
 function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+const CACHE_KEY='tcs_portal_'+TOKEN;
+function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(DATA)); }catch(_){} }
+
 async function load(){
+  // 1. mostra subito l'ultimo stato salvato (apertura istantanea)
+  try{ const c=localStorage.getItem(CACHE_KEY); if(c){ DATA=JSON.parse(c); render(); setupAutoRefresh(); } }catch(_){}
+  // 2. aggiorna dal server in sottofondo
   try{
-    const r=await fetch(`${API}/data`,{cache:'no-store'}); DATA=await r.json();
-    if(DATA.error){ document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Sessione non valida.</div></div>'; return; }
-    render();
-    setupAutoRefresh();
-  }catch(e){ document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Connessione non riuscita. Riprova.</div></div>'; }
+    const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
+    if(fresh.error){ if(!DATA) document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Sessione non valida.</div></div>'; return; }
+    DATA=fresh; saveCache(); render(); setupAutoRefresh();
+  }catch(e){ if(!DATA) document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Connessione non riuscita. Riprova.</div></div>'; }
 }
 
-/* Auto-refresh: riallinea al mirror quando la pagina torna in primo piano e ogni 45s.
-   Silenzioso (niente "Carico…"), preserva tab/filtro/giorno; salta se c'è un annullo in corso. */
+/* Auto-refresh: riallinea al mirror al ritorno in primo piano e ogni 90s.
+   Silenzioso, preserva tab/filtro/giorno; salta se c'è un annullo/selezione/nota in corso. */
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || SELMODE || document.hidden) return;
   _refreshing=true;
   try{
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
-    if(!fresh.error){ DATA=fresh; render(); }
+    if(!fresh.error){ DATA=fresh; saveCache(); render(); }
   }catch(_){}
   _refreshing=false;
 }
@@ -69,7 +74,7 @@ function setupAutoRefresh(){
   if(_autoOn) return; _autoOn=true;
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) silentRefresh(); });
   window.addEventListener('focus', silentRefresh);
-  setInterval(silentRefresh, 45000);
+  setInterval(silentRefresh, 90000);
 }
 
 function counts(){
