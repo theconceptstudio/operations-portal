@@ -31,6 +31,8 @@ function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set();
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
+let PVIEW='giorno';
+function setPView(v){ PVIEW=v; render(); }
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -91,9 +93,9 @@ function render(){
     </div></div>
     <div class="content">${TAB==='dafare'?viewDaFare():viewPulizie()}</div>`;
 }
-function setTab(t){ TAB=t; render(); }
-function setFilter(f){ FILTER=f; render(); }
-function setSort(s){ SORT=s; render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); render(); }
+function setFilter(f){ FILTER=f; OPEN_CARDS.clear(); render(); }
+function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k){ if(OPEN_APTS.has(k)) OPEN_APTS.delete(k); else OPEN_APTS.add(k); render(); }
 function toggleOverdue(){ OVERDUE_OPEN=!OVERDUE_OPEN; render(); }
@@ -252,6 +254,13 @@ function renderByApt(items){
 /* ── PULIZIE ───────────────────────────────────────────────────────── */
 function viewPulizie(){
   const puliz=(DATA.pulizie||[]).filter(x=>x.stato!=='Annullata');
+  const isDesktop = window.matchMedia('(min-width:1024px)').matches;
+  const toggle = isDesktop ? `<div class="pv-toggle">
+      <button class="pvbtn ${PVIEW==='giorno'?'on':''}" onclick="setPView('giorno')">${ic('calendar')}Giorno</button>
+      <button class="pvbtn ${PVIEW==='griglia'?'on':''}" onclick="setPView('griglia')">${ic('clipboard')}Griglia settimana</button>
+    </div>` : '';
+  if(isDesktop && PVIEW==='griglia') return toggle + pulizieGrid(puliz);
+  // Vista giorno (default, sempre su mobile)
   const byDay={}; puliz.forEach(p=>{ if(p.data) (byDay[p.data]=byDay[p.data]||[]).push(p); });
   const list=(byDay[SEL]||[]).slice().sort((a,b)=>(a.inizio||'').localeCompare(b.inizio||''));
   let body;
@@ -260,7 +269,46 @@ function viewPulizie(){
   }else{
     body=`<div class="grid">${list.map(pCard).join('')}</div>`;
   }
-  return weekStrip(byDay)+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
+  return toggle+weekStrip(byDay)+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
+}
+
+/* Griglia settimanale stile Operations tracker (solo desktop): appartamenti × giorni */
+function tipoColor(t){ return t==='Proprietario'?'#7A5AA8':t==='Intermedia'?'#B9892E':'#9A9183'; }
+function gChip(p){
+  const col=tipoColor(p.tipo);
+  const icons=[];
+  if(p.late_checkout) icons.push(ic('clock'));
+  if(p.early_checkin) icons.push(ic('key'));
+  if(p.deposito) icons.push(ic('luggage'));
+  const done=p.stato==='Completata';
+  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}">
+    <span class="gt">${p.inizio?esc(p.inizio):'—'}</span>${icons.join('')}${done?ic('check'):''}</div>`;
+}
+function pulizieGrid(puliz){
+  const days=[]; for(let i=0;i<7;i++) days.push(addDays(WEEK0,i));
+  const end=addDays(WEEK0,6);
+  const byApt={};
+  puliz.forEach(p=>{ if(!p.data||p.data<WEEK0||p.data>end) return;
+    const k=p.appartamento||'—'; (byApt[k]=byApt[k]||{}); (byApt[k][p.data]=byApt[k][p.data]||[]).push(p); });
+  const apts=Object.keys(byApt).sort();
+  const nav=`<div class="wkhead"><span class="wklbl">${ic('calendar')}Settimana · ${dShort(WEEK0)} – ${dShort(end)}</span>
+    <span class="wknav">${WEEK0!==mondayOf(todayISO())?`<button class="oggi-btn" onclick="goOggi()">${ic('calendar')}Oggi</button>`:''}
+    <button class="nav" onclick="shiftWeek(-1)">${ic('chevronL')}</button>
+    <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></span></div>`;
+  if(!apts.length) return nav+`<div class="empty-state">${ic('sparkles')}<div class="t">Nessuna pulizia questa settimana</div></div>`;
+  const head=`<div class="gcell gapt ghapt">Appartamento</div>`+days.map(d=>{const dt=parseISO(d);
+    return `<div class="gcell gh ${d===todayISO()?'today':''}"><span class="ghdow">${DOW[dt.getDay()]}</span><span class="ghnum">${dt.getDate()}</span></div>`;}).join('');
+  const rows=apts.map(apt=>{
+    const firstDay=Object.keys(byApt[apt])[0];
+    const via=(byApt[apt][firstDay][0].indirizzo)||apt;
+    const cells=days.map(d=>{
+      const lst=(byApt[apt][d]||[]).slice().sort((a,b)=>(a.inizio||'').localeCompare(b.inizio||''));
+      return `<div class="gcell ${d===todayISO()?'today':''}">${lst.map(gChip).join('')}</div>`;
+    }).join('');
+    return `<div class="grow"><div class="gcell gapt"><b>${esc(via)}</b><span>${esc(apt)}</span></div>${cells}</div>`;
+  }).join('');
+  return nav+`<div class="gwrap">
+    <div class="gtable"><div class="grow ghead">${head}</div>${rows}</div></div>`;
 }
 
 function pCard(p){
