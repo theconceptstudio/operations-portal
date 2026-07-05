@@ -261,15 +261,31 @@ svg{display:block}
   color:var(--greige);display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .reply .lbl{color:var(--p-l)}
 .reply .lbl .ic,.mynote .lbl .ic{width:13px;height:13px}
+/* Allegati (anteprime foto/video) */
+.alleg{margin:14px 0}
+.alleg .lbl{font-family:var(--light);font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--greige);display:flex;align-items:center;gap:6px;margin-bottom:9px}
+.alleg .lbl .ic{width:13px;height:13px}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumb{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);background-size:cover;
+  background-position:center;display:block;flex:none}
+.thumb.vid{background:var(--ink);display:flex;align-items:center;justify-content:center;color:var(--cream)}
+.thumb.vid .ic{width:22px;height:22px}
+
 .notebtn{margin-top:12px;width:100%;background:none;border:1px dashed var(--line-2);border-radius:10px;
-  padding:11px;font-family:var(--light);font-size:12.5px;color:var(--greige-text);cursor:pointer;
+  padding:12px;font-family:var(--light);font-size:13px;color:var(--greige-text);cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;gap:7px}
 .notebtn .ic{width:15px;height:15px}
-.notebox{margin-top:12px}
-.notebox textarea{width:100%;border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;
-  font-family:var(--body);font-size:14px;color:var(--ink);resize:vertical;background:var(--white)}
+.notebox{margin-top:12px;background:var(--cream);border-radius:12px;padding:14px}
+.notelbl{font-family:var(--light);font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--greige);display:flex;align-items:center;gap:6px;margin-bottom:9px}
+.notelbl .ic{width:13px;height:13px}
+.notebox textarea{width:100%;border:1px solid var(--line-2);border-radius:10px;padding:12px 13px;
+  font-family:var(--body);font-size:16px;color:var(--ink);resize:vertical;background:var(--white);
+  line-height:1.4;min-height:70px}
 .notebox textarea:focus{outline:none;border-color:var(--ink)}
-.noteact{display:flex;gap:9px;margin-top:9px}
+.noteact{display:flex;gap:9px;margin-top:11px}
+.btn.ghost{background:none;color:var(--greige-text);border-color:transparent;flex:0 0 auto;min-width:0;padding:13px 16px}
 .actions{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}
 .btn{flex:1;min-width:130px;border-radius:11px;padding:13px;font-family:var(--body);font-size:13px;
   cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;

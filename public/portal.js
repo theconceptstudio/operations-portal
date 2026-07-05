@@ -25,11 +25,12 @@ const ICN = {
   clipboard:'<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="m9.5 14 2 2 3.5-3.5"/>',
   broom:'<path d="M4 20l7-7"/><path d="M13 11l4-4a2.8 2.8 0 0 1 4 4l-4 4"/><path d="M11 13l3 3-4 4H6l-2-2 4-4z"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4"/>',
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
-let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set();
+let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={};
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
 let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
@@ -379,19 +380,34 @@ function iCard(x,kind){
       ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
       ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
       ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
+      ${allegatiBlock(key, x)}
       <div class="actions">
         <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
           ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
-        <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto/Video</button>
+        <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>
         ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
       </div>
       ${NOTE_OPEN===key
-        ? `<div class="notebox"><textarea id="nota-${id}" rows="2" placeholder="Scrivi una nota per l'ufficio, es. in attesa della lavanderia"></textarea>
-            <div class="noteact"><button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia nota</button>
-            <button class="btn foto" onclick="closeNota()">Annulla</button></div></div>`
+        ? `<div class="notebox">
+            <div class="notelbl">${ic('info')}Nota per l'ufficio</div>
+            <textarea id="nota-${id}" rows="3" placeholder="Es. in attesa della lavanderia, torno domani"></textarea>
+            <div class="noteact"><button class="btn ghost" onclick="closeNota()">Annulla</button>
+            <button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia all'ufficio</button></div></div>`
         : `<button class="notebtn" onclick="openNota('${key}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}
     </div>` : '';
   return `<div class="icard compact ${late?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
+}
+
+function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }
+function allegatiBlock(key, x){
+  const ups=UPLOADS[key]||[];
+  const cnt = ups.length || (x.allegati_count||0);
+  if(!cnt) return '';
+  const thumbs = ups.map(u=> isVideo(u)
+    ? `<a href="${u}" target="_blank" rel="noopener" class="thumb vid">${ic('film')}</a>`
+    : `<a href="${u}" target="_blank" rel="noopener" class="thumb" style="background-image:url('${u}')"></a>`).join('');
+  return `<div class="alleg"><div class="lbl">${ic('camera')}Allegati (${cnt}) · inviati all'ufficio</div>
+    ${thumbs?`<div class="thumbs">${thumbs}</div>`:''}</div>`;
 }
 
 /* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */
@@ -456,13 +472,17 @@ function pickFoto(kind,id){
 }
 async function uploadFoto(e){
   const files=Array.from(e.target.files||[]); if(!files.length||!FOTO_ID) return;
+  const key=(FOTO_KIND||'issue')+':'+FOTO_ID;
+  UPLOADS[key]=UPLOADS[key]||[];
   toast(files.length>1?`Carico ${files.length} file…`:'Carico il file…');
   let ok=0;
   for(const f of files){
     const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('kind',FOTO_KIND||'issue'); fd.append('file',f);
-    try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json(); if(j.ok) ok++; }catch(_){}
+    try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
+      if(j.ok){ ok++; if(j.url) UPLOADS[key].push(j.url); } }catch(_){}
   }
-  toast(ok===files.length?(ok>1?`${ok} file caricati`:'File caricato'):`${ok}/${files.length} caricati`);
+  render();  // mostra subito le anteprime
+  toast(ok?(ok>1?`${ok} file inviati all'ufficio`:"File inviato all'ufficio"):'Caricamento non riuscito');
 }
 
 function toast(msg){ const t=document.getElementById('toast');
