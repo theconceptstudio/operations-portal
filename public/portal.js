@@ -311,8 +311,19 @@ function gChip(p){
   if(p.early_checkin) icons.push(ic('key'));
   if(p.deposito) icons.push(ic('luggage'));
   const done=p.stato==='Completata';
-  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}">
-    <span class="gt">${p.inizio?esc(p.inizio):'—'}</span>${icons.join('')}${done?ic('check'):''}</div>`;
+  const slot=p.inizio?`${esc(p.inizio)}${p.fine?'–'+esc(p.fine):''}`:'—';
+  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}${p.deposito?' · deposito: '+esc(p.deposito):''}">
+    <span class="gt">${slot}</span>${icons.join('')}${done?ic('check'):''}</div>`;
+}
+function pulizieLegenda(){
+  return `<div class="glegend">
+    <span><span class="ldot" style="background:#9A9183"></span>Standard</span>
+    <span><span class="ldot" style="background:#B9892E"></span>Intermedia</span>
+    <span><span class="ldot" style="background:#7A5AA8"></span>Proprietario</span>
+    <span class="lsep"></span>
+    <span>${ic('clock')}Late checkout (12–15)</span>
+    <span>${ic('key')}Early check-in</span>
+    <span>${ic('luggage')}Deposito bagagli</span></div>`;
 }
 function pulizieGrid(puliz){
   const days=[]; for(let i=0;i<7;i++) days.push(addDays(WEEK0,i));
@@ -338,7 +349,7 @@ function pulizieGrid(puliz){
     return `<div class="grow"><div class="gcell gapt"><b>${esc(via)}</b><span>${esc(apt)}</span></div>${cells}</div>`;
   }).join('');
   return nav+`<div class="gwrap">
-    <div class="gtable"><div class="grow ghead">${head}</div>${rows}</div></div>`;
+    <div class="gtable"><div class="grow ghead">${head}</div>${rows}</div></div>`+pulizieLegenda();
 }
 
 function pCard(p){
