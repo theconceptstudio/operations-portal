@@ -180,11 +180,11 @@ svg{display:block}
 .apthead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:none;border:none;cursor:pointer;padding:15px 17px;text-align:left}
 .apthead.open{border-bottom:1px solid var(--line)}
-.aptname{display:flex;align-items:center;gap:8px;min-width:0}
-.aptname .ic{width:16px;height:16px;color:var(--greige);flex:none}
+.aptname{display:flex;align-items:baseline;gap:8px;min-width:0;flex:1;flex-wrap:wrap}
+.aptname .ic{width:16px;height:16px;color:var(--greige);flex:none;align-self:center}
 .aptname b{font-family:var(--disp);font-weight:200;font-size:21px;color:var(--ink);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.aptsub{font-family:var(--light);font-size:11.5px;color:var(--greige);margin-left:2px}
+  line-height:1.15;overflow-wrap:anywhere}
+.aptsub{font-family:var(--light);font-size:11.5px;color:var(--greige)}
 .aptmeta{display:flex;align-items:center;gap:9px;flex:none}
 .aptmeta .ic{width:18px;height:18px;color:var(--greige)}
 .aptlate{font-family:var(--body);font-size:10.5px;color:var(--p-vh);background:#fbecea;
@@ -205,7 +205,11 @@ svg{display:block}
   overflow-wrap:anywhere}
 .isub{font-family:var(--light);font-size:12.5px;color:var(--greige-text);margin-top:4px;
   line-height:1.4;overflow-wrap:anywhere}
-.isub .latechip{margin-right:3px;vertical-align:middle}
+.isub .latechip,.isub .confchip{margin-right:3px;vertical-align:middle}
+.confchip{display:inline-flex;align-items:center;gap:4px;font-size:10px;flex:none;
+  color:var(--p-l);background:#edf4ef;border-radius:999px;padding:3px 9px;font-family:var(--body)}
+.confchip .ic{width:12px;height:12px}
+.idue.done{color:var(--p-l)}.idue.done .ic{color:var(--p-l)}
 .iright{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
 .iright > .ic{width:18px;height:18px;color:var(--greige)}
 .idue{display:inline-flex;align-items:center;gap:4px;font-family:var(--light);font-size:11.5px;
@@ -296,6 +300,7 @@ svg{display:block}
 .btn.wa{background:var(--white);color:var(--greige-text);border-color:var(--line-2)}
 .btn.foto{background:var(--white);color:var(--greige-text);border-color:var(--line-2)}
 .btn:disabled{cursor:default}
+.warecap{display:flex;width:100%;margin:0 0 14px;background:var(--wa);color:#fff;border-color:var(--wa)}
 
 /* Toggle Giorno/Griglia (desktop) */
 .pv-toggle{display:flex;gap:8px;margin:0 2px 18px}

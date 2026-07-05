@@ -268,9 +268,27 @@ function viewPulizie(){
   if(!list.length){
     body=`<div class="empty-state">${ic('sparkles')}<div class="t">Giornata libera</div>Nessuna pulizia ${SEL===todayISO()?'oggi':'in questo giorno'}.</div>`;
   }else{
-    body=`<div class="grid">${list.map(pCard).join('')}</div>`;
+    const waRecap=`https://wa.me/?text=${encodeURIComponent(pulizieRecap(list, SEL))}`;
+    body=`<a class="btn wa warecap" href="${waRecap}" target="_blank" rel="noopener">${ic('message')}Invia riepilogo giornata</a>
+      <div class="grid">${list.map(pCard).join('')}</div>`;
   }
   return toggle+weekStrip(byDay)+`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} pulizi${list.length===1?'a':'e'}</span></div>`+body;
+}
+
+/* Messaggio WhatsApp riepilogo pulizie della giornata, con emoji */
+function pulizieRecap(list, dISO){
+  const out=[`🧹 Pulizie di ${dLong(dISO)}`, ''];
+  list.forEach(p=>{
+    const via=p.indirizzo||p.appartamento;
+    out.push(`📍 ${via}${p.appartamento&&p.appartamento!==via?' — '+p.appartamento:''}`);
+    const ora=p.inizio?`🕐 ${p.inizio}${p.fine?'–'+p.fine:''}`:'🕐 orario da definire';
+    const tip=p.tipo==='Proprietario'?' · 👤 proprietario':p.tipo==='Intermedia'?' · 🔄 intermedia':'';
+    out.push(ora+tip);
+    const ex=[]; if(p.late_checkout)ex.push('⏰ late checkout'); if(p.early_checkin)ex.push('🔑 early check-in'); if(p.deposito)ex.push('🧳 deposito: '+p.deposito);
+    if(ex.length) out.push(ex.join(' · '));
+    out.push('');
+  });
+  return out.join('\n').trim();
 }
 
 /* Griglia settimanale stile Operations tracker (solo desktop): appartamenti × giorni */
@@ -346,11 +364,11 @@ function iCard(x,kind){
   const via=x.indirizzo||x.appartamento;
   const id=x.notion_id;
   const tipoLbl=kind==='issue'?'Manutenzione':'Task';
-  // Messaggio WhatsApp precompilato con tutti i dettagli
-  const waLines=[`${tipoLbl}: ${titolo}`, via?`Dove: ${via}`:'',
-    x.appartamento&&x.appartamento!==via?`Appartamento: ${x.appartamento}`:'',
-    plbl?`Priorità: ${plbl}`:'', dataLbl?`Quando: ${dataLbl}${late?' (in ritardo di '+ritardo+'g)':''}`:'',
-    x.stato?`Stato: ${x.stato}`:''].filter(Boolean);
+  // Messaggio WhatsApp precompilato con emoji per scansionarlo bene
+  const waLines=[`${kind==='issue'?'🔧':'✅'} ${tipoLbl}: ${titolo}`, via?`📍 Dove: ${via}`:'',
+    x.appartamento&&x.appartamento!==via?`🏠 ${x.appartamento}`:'',
+    plbl?`⚠️ Priorità: ${plbl}`:'', dataLbl?`📅 Quando: ${dataLbl}${late?' ⏰ in ritardo di '+ritardo+'g':''}`:'',
+    x.stato?`📌 Stato: ${x.stato}`:''].filter(Boolean);
   const waTarget=OFFICE_WA?`https://wa.me/${OFFICE_WA}`:'https://wa.me/';
   const wa=`${waTarget}?text=${encodeURIComponent(waLines.join('\n'))}`;
   const istr=(x.istruzioni||'').trim();
@@ -364,12 +382,13 @@ function iCard(x,kind){
     ? `<span class="idue ${late?'late':''}">${ic('calendar')}${esc(dShort(dataRaw))}${late?' · scaduta':''}</span>`
     : (conf?'':`<span class="idue nodate">${ic('calendar')}senza data</span>`);
   const lateChip = late?`<span class="latechip">${ritardo}g in ritardo</span>`:'';
+  const statusChip = conf ? `<span class="confchip">${ic('check')}confermato</span>` : lateChip;
   // Testata compatta (sempre): pallino priorità · via · intervento · scadenza
   const head=`<div class="ihead" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:`onclick="toggleCard('${key}')"`}>
       ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:`<span class="ipdot" style="background:${pc}" title="${esc(plbl)}"></span>`}
       <div class="imain">
         <div class="ivia">${esc(via||'—')}</div>
-        <div class="isub">${lateChip}${esc(titolo)}</div>
+        <div class="isub">${statusChip}${esc(titolo)}</div>
       </div>
       <div class="iright">${dueBadge}${SELMODE?'':ic(open?'chevronU':'chevronD')}</div>
     </div>`;
