@@ -57,7 +57,18 @@ async function load(){
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
     if(fresh.error){ if(!DATA) document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Sessione non valida.</div></div>'; return; }
     DATA=fresh; saveCache(); render(); setupAutoRefresh();
+    triggerSync();  // all'apertura forza un sync Notion→mirror, poi riallinea
   }catch(e){ if(!DATA) document.getElementById('app').innerHTML='<div class="content"><div class="empty-state">Connessione non riuscita. Riprova.</div></div>'; }
+}
+
+/* Forza un sync Notion→mirror lato server (con freno), poi riallinea la vista */
+let _syncing=false;
+async function triggerSync(){
+  if(_syncing || PENDING || NOTE_OPEN || SELMODE) return;
+  _syncing=true;
+  try{ await fetch(`${API}/refresh`); }catch(_){}
+  _syncing=false;
+  silentRefresh();
 }
 
 /* Auto-refresh: riallinea al mirror al ritorno in primo piano e ogni 90s.
@@ -75,8 +86,8 @@ async function silentRefresh(){
 let _autoOn=false;
 function setupAutoRefresh(){
   if(_autoOn) return; _autoOn=true;
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) silentRefresh(); });
-  window.addEventListener('focus', silentRefresh);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) triggerSync(); });
+  window.addEventListener('focus', triggerSync);
   setInterval(silentRefresh, 90000);
 }
 

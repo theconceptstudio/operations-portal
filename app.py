@@ -160,6 +160,24 @@ def nota(token):
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'note_operatore': nuovo})
 
+_LAST_SYNC = {'ts': 0.0}
+@app.route('/api/o/<token>/refresh')
+def refresh(token):
+    """Sync on-demand quando l'operatore apre il portale, con freno (min 40s tra un sync e l'altro)
+    così i dati Notion arrivano subito senza martellare Notion/Supabase."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    now = time.time()
+    if now - _LAST_SYNC['ts'] < 40:
+        return jsonify({'ok': True, 'skipped': True})
+    _LAST_SYNC['ts'] = now
+    try:
+        import sync
+        sync.main()
+        return jsonify({'ok': True, 'synced': True, 'ts': datetime.datetime.utcnow().isoformat()})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 @app.route('/api/o/<token>/foto', methods=['POST'])
 def foto(token):
     op = operatore_by_token(token)
