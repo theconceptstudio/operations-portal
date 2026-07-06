@@ -513,16 +513,31 @@ function pickFoto(kind,id){
 }
 async function uploadFoto(e){
   const files=Array.from(e.target.files||[]); if(!files.length||!FOTO_ID) return;
-  const key=(FOTO_KIND||'issue')+':'+FOTO_ID;
+  const kind=FOTO_KIND||'issue', id=FOTO_ID, key=kind+':'+id;
   UPLOADS[key]=UPLOADS[key]||[];
+  const vids=files.filter(f=>/^video/.test(f.type)||isVideo(f.name)).length;
+  const phts=files.length-vids;
   toast(files.length>1?`Carico ${files.length} file…`:'Carico il file…');
   let ok=0;
   for(const f of files){
-    const fd=new FormData(); fd.append('issue_id',FOTO_ID); fd.append('kind',FOTO_KIND||'issue'); fd.append('file',f);
+    const fd=new FormData(); fd.append('issue_id',id); fd.append('kind',kind); fd.append('file',f);
     try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
       if(j.ok){ ok++; if(j.url) UPLOADS[key].push(j.url); } }catch(_){}
   }
   render();  // mostra subito le anteprime
+  // Traccia l'upload nelle note operatore (bullet con emoji), così resta a memoria su Notion
+  if(ok>0){
+    const bits=[];
+    if(phts===1) bits.push('📷 caricata 1 foto'); else if(phts>1) bits.push(`📷 caricate ${phts} foto`);
+    if(vids===1) bits.push('🎥 caricato 1 video'); else if(vids>1) bits.push(`🎥 caricati ${vids} video`);
+    const testo=bits.join(' · ');
+    if(testo){
+      try{ const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kind,id,testo})}); const j=await r.json();
+        if(j.ok){ const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
+          if(it){ it.note_operatore=j.note_operatore; render(); } } }catch(_){}
+    }
+  }
   toast(ok?(ok>1?`${ok} file inviati all'ufficio`:"File inviato all'ufficio"):'Caricamento non riuscito');
 }
 
