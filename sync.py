@@ -129,15 +129,36 @@ def sb_reconcile(table, current_ids):
     return removed
 
 # ── Sync ────────────────────────────────────────────────────────────────────
+FIELD_ATTIVITA = {'Pulizia', 'Pulizia a Fondo', 'Manutenzioni', 'Tuttofare', 'Lavanderia'}
+
+def _responsabili_ids():
+    """Tutti gli id (senza trattini) che risultano Responsabile Pulizia su almeno un appartamento."""
+    ids = set()
+    for a in n_query(DB_APPARTAMENTI):
+        for r in (a['properties'].get('Responsabile Pulizia') or {}).get('relation', []):
+            ids.add(r['id'].replace('-', ''))
+    return ids
+
+def _qualifica_portale(p, responsabili):
+    """Un contatto merita il Link Portale solo se: ruolo di campo (pulizia/manutenzione/ecc),
+    Attivo? spuntato, e collegato ad almeno un appartamento (relazione diretta o come responsabile)."""
+    pr = p['properties']
+    attivita = set(multi_names(pr.get('Attività')))
+    if not (attivita & FIELD_ATTIVITA):
+        return False
+    if not chk_of(pr.get('Attivo?')):
+        return False
+    has_apt = bool((pr.get('Appartamenti (pulizia)') or {}).get('relation')) or nid(p['id']) in responsabili
+    return has_apt
+
 def sync_operatori():
     pages = n_query(DB_FORNITORI)
+    responsabili = _responsabili_ids()
     rows = []
     for p in pages:
-        pr = p['properties']
-        attivita = multi_names(pr.get('Attività'))
-        # operatori di campo: pulizia o manutenzioni
-        if not any(a in attivita for a in ('Pulizia', 'Pulizia a Fondo', 'Manutenzioni', 'Tuttofare', 'Lavanderia')):
+        if not _qualifica_portale(p, responsabili):
             continue
+        pr = p['properties']
         email = (pr.get('Email') or {}).get('email')
         rows.append({
             'notion_id': nid(p['id']),
@@ -147,8 +168,34 @@ def sync_operatori():
             'attivo': chk_of(pr.get('Attivo?')),
         })
     n = sb_upsert('op_operatori', rows)
-    print(f'operatori: {len(rows)} candidati, {n} upsert')
+    print(f'operatori: {len(rows)} qualificano (attivo+appartamento), {n} upsert')
+    _sync_link_portale(pages, responsabili, rows)
     return rows
+
+def _sync_link_portale(pages, responsabili, righe_qualificate):
+    """Scrive Link Portale su Notion solo a chi qualifica; lo rimuove a chi non qualifica piu'
+    (es. disattivato o senza appartamento). Si auto-corregge ad ogni sync, nessun intervento manuale."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return
+    qualificati_ids = {r['notion_id'] for r in righe_qualificate}
+    base = os.environ.get('PORTAL_BASE_URL', 'https://operations-portale.vercel.app')
+    scritti, rimossi = 0, 0
+    for p in pages:
+        pid = p['id']
+        pr = p['properties']
+        current = (pr.get('Link Portale') or {}).get('url')
+        if nid(pid) in qualificati_ids:
+            atteso = f"{base}/o/{op_token(nid(pid))}"
+            if current != atteso:
+                _session.patch(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS,
+                               json={'properties': {'Link Portale': {'url': atteso}}}, timeout=20)
+                scritti += 1
+        elif current:
+            _session.patch(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS,
+                           json={'properties': {'Link Portale': {'url': None}}}, timeout=20)
+            rimossi += 1
+    if scritti or rimossi:
+        print(f'Link Portale: {scritti} scritti/aggiornati, {rimossi} rimossi (non qualificano piu\')')
 
 def sync_appartamenti():
     pages = n_query(DB_APPARTAMENTI)
