@@ -122,14 +122,15 @@ def conferma(token):
     item_id = d.get('id') or d.get('issue_id') or d.get('task_id')
     if not item_id: return jsonify({'ok': False, 'error': 'id mancante'}), 400
     table = 'op_tasks' if kind == 'task' else 'op_issues'
-    oggi = datetime.date.today().isoformat()
+    valore = d.get('valore', True)  # True=conferma, False=riattiva (annulla conferma)
+    oggi = datetime.date.today().isoformat() if valore else None
     try:
-        n_patch(item_id, {'Confermato dal manutentore': {'checkbox': True},
-                          'Confermato il': {'date': {'start': oggi}}})
+        n_patch(item_id, {'Confermato dal manutentore': {'checkbox': bool(valore)},
+                          'Confermato il': {'date': ({'start': oggi} if oggi else None)}})
         _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
                        headers=_sb_headers({'Prefer': 'return=minimal'}),
                        params={'notion_id': f'eq.{item_id}'},
-                       json={'confermato_manutentore': True, 'confermato_il': oggi}, timeout=20)
+                       json={'confermato_manutentore': bool(valore), 'confermato_il': oggi}, timeout=20)
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True})

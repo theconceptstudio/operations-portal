@@ -292,10 +292,10 @@ function pulizieRecap(list, dISO){
   list.forEach(p=>{
     const via=p.indirizzo||p.appartamento;
     out.push(`📍 ${via}${p.appartamento&&p.appartamento!==via?' — '+p.appartamento:''}`);
-    const ora=p.inizio?`🕐 ${p.inizio}${p.fine?'–'+p.fine:''}`:'🕐 orario da definire';
+    const o=orariPulizia(p);
     const tip=p.tipo==='Proprietario'?' · 👤 proprietario':p.tipo==='Intermedia'?' · 🔄 intermedia':'';
-    out.push(ora+tip);
-    const ex=[]; if(p.late_checkout)ex.push('⏰ late checkout'); if(p.early_checkin)ex.push('🔑 early check-in'); if(p.deposito)ex.push('🧳 deposito: '+p.deposito);
+    out.push(`🕐 ${o.i}–${o.f}`+tip);
+    const ex=[]; if(p.late_checkout)ex.push('⏰ late checkout'); if(p.early_checkin)ex.push('🔑 early check-in'); if(depOk(p.deposito))ex.push('🧳 deposito: '+p.deposito);
     if(ex.length) out.push(ex.join(' · '));
     out.push('');
   });
@@ -304,16 +304,25 @@ function pulizieRecap(list, dISO){
 
 /* Griglia settimanale stile Operations tracker (solo desktop): appartamenti × giorni */
 function tipoColor(t){ return t==='Proprietario'?'#7A5AA8':t==='Intermedia'?'#B9892E':'#9A9183'; }
+/* Deposito valido (non "Nessuno") */
+function depOk(d){ return !!d && d!=='Nessuno'; }
+/* Orari pulizia in base ai servizi (stesse regole del GAS: default 10–15; late 12–15; early fine 14) */
+function orariPulizia(p){
+  if(p.late_checkout && p.early_checkin) return {i:'12:00', f:'14:00'};
+  if(p.late_checkout) return {i:'12:00', f:'15:00'};
+  if(p.early_checkin) return {i:'10:00', f:'14:00'};
+  return {i: p.inizio || '10:00', f: p.fine || '15:00'};
+}
 function gChip(p){
   const col=tipoColor(p.tipo);
   const icons=[];
   if(p.late_checkout) icons.push(ic('clock'));
   if(p.early_checkin) icons.push(ic('key'));
-  if(p.deposito) icons.push(ic('luggage'));
+  if(depOk(p.deposito)) icons.push(ic('luggage'));
   const done=p.stato==='Completata';
-  const slot=p.inizio?`${esc(p.inizio)}${p.fine?'–'+esc(p.fine):''}`:'—';
-  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}${p.deposito?' · deposito: '+esc(p.deposito):''}">
-    <span class="gt">${slot}</span>${icons.join('')}${done?ic('check'):''}</div>`;
+  const o=orariPulizia(p);
+  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}${depOk(p.deposito)?' · deposito: '+esc(p.deposito):''}${p.late_checkout?' · late checkout':''}${p.early_checkin?' · early check-in':''}">
+    <span class="gt">${o.i}–${o.f}</span>${icons.join('')}${done?ic('check'):''}</div>`;
 }
 function pulizieLegenda(){
   return `<div class="glegend">
@@ -360,8 +369,9 @@ function pCard(p){
   const svc=[];
   if(p.late_checkout) svc.push(`<span class="svc">${ic('clock')}Late checkout</span>`);
   if(p.early_checkin) svc.push(`<span class="svc">${ic('key')}Early check-in</span>`);
-  if(p.deposito) svc.push(`<span class="svc">${ic('luggage')}Deposito: ${esc(p.deposito)}</span>`);
-  const ora=p.inizio?`${esc(p.inizio)}${p.fine?'–'+esc(p.fine):''}`:'Orario da definire';
+  if(depOk(p.deposito)) svc.push(`<span class="svc">${ic('luggage')}Deposito: ${esc(p.deposito)}</span>`);
+  const o=orariPulizia(p);
+  const ora=`${esc(o.i)}–${esc(o.f)}`;
   const done=p.stato==='Completata';
   return `<div class="pcard ${cls}">
     <div class="r1"><span class="time">${ora}</span>
@@ -423,7 +433,7 @@ function iCard(x,kind){
       ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
       ${allegatiBlock(key, x)}
       <div class="actions">
-        <button class="btn ok ${conf?'done':''}" ${conf?'disabled':''} onclick="conferma('${kind}','${id}')">
+        <button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`conferma('${kind}','${id}')`}" title="${conf?'Clicca per riattivare':''}">
           ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
         <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>
         ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
@@ -481,6 +491,19 @@ function undoConferma(){
   p.it.confermato_manutentore=false; render();
   const t=document.getElementById('toast'); t.classList.remove('show','undo');
   toast('Annullato');
+}
+
+/* Riattiva: ri-clic su "Confermato" torna a "da fare" (per chi conferma per sbaglio). Diretto, no countdown. */
+async function riattiva(kind,id){
+  const arr=kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===id); if(!it) return;
+  it.confermato_manutentore=false; render();  // ottimistico
+  try{
+    const r=await fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind,id,valore:false})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    toast('Riattivata');
+  }catch(e){ it.confermato_manutentore=true; render(); toast('Non riuscito, riprova.'); }
 }
 
 /* Nota operatore ↔ ufficio */
