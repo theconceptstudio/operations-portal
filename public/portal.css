@@ -288,6 +288,9 @@ svg{display:block}
   font-family:var(--body);font-size:16px;color:var(--ink);resize:vertical;background:var(--white);
   line-height:1.4;min-height:70px}
 .notebox textarea:focus{outline:none;border-color:var(--ink)}
+.rsc-input{width:100%;border:1px solid var(--line-2);border-radius:10px;padding:12px 13px;
+  font-family:var(--body);font-size:16px;color:var(--ink);background:var(--white)}
+.rsc-input:focus{outline:none;border-color:var(--ink)}
 .noteact{display:flex;gap:9px;margin-top:11px}
 .btn.ghost{background:none;color:var(--greige-text);border-color:transparent;flex:0 0 auto;min-width:0;padding:13px 16px}
 .actions{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}

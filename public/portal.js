@@ -30,7 +30,7 @@ const ICN = {
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
-let NOTE_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={};
+let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={};
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
 let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
@@ -64,7 +64,7 @@ async function load(){
 /* Forza un sync Notion→mirror lato server (con freno), poi riallinea la vista */
 let _syncing=false;
 async function triggerSync(){
-  if(_syncing || PENDING || NOTE_OPEN || SELMODE) return;
+  if(_syncing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE) return;
   _syncing=true;
   try{ await fetch(`${API}/refresh`); }catch(_){}
   _syncing=false;
@@ -75,7 +75,7 @@ async function triggerSync(){
    Silenzioso, preserva tab/filtro/giorno; salta se c'è un annullo/selezione/nota in corso. */
 let _refreshing=false;
 async function silentRefresh(){
-  if(_refreshing || PENDING || NOTE_OPEN || SELMODE || document.hidden) return;
+  if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
   _refreshing=true;
   try{
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
@@ -111,7 +111,12 @@ function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k){ if(OPEN_APTS.has(k)) OPEN_APTS.delete(k); else OPEN_APTS.add(k); render(); }
 function toggleOverdue(){ OVERDUE_OPEN=!OVERDUE_OPEN; render(); }
-function toggleCard(k){ if(OPEN_CARDS.has(k)) OPEN_CARDS.delete(k); else OPEN_CARDS.add(k); render(); }
+function toggleCard(k){
+  const opening=!OPEN_CARDS.has(k);
+  if(opening) OPEN_CARDS.add(k); else OPEN_CARDS.delete(k);
+  render();
+  if(opening){ const i=k.indexOf(':'); fetchAllegati(k.slice(0,i), k.slice(i+1)); }  // allegati freschi (anche dall'ufficio)
+}
 function toggleUrg(k){ if(OPEN_URG.has(k)) OPEN_URG.delete(k); else OPEN_URG.add(k); render(); }
 /* Swipe della settimana col dito */
 let _wkX=null;
@@ -431,7 +436,7 @@ function iCard(x,kind){
       ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
       ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
       ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
-      ${allegatiBlock(key, x)}
+      ${allegatiBlock(key)}
       <div class="actions">
         <button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`conferma('${kind}','${id}')`}" title="${conf?'Clicca per riattivare':''}">
           ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
@@ -445,20 +450,40 @@ function iCard(x,kind){
             <div class="noteact"><button class="btn ghost" onclick="closeNota()">Annulla</button>
             <button class="btn ok" onclick="sendNota('${kind}','${id}')">${ic('check')}Invia all'ufficio</button></div></div>`
         : `<button class="notebtn" onclick="openNota('${key}')">${ic('info')}Aggiungi nota per l'ufficio</button>`}
+      ${RESCHED_OPEN===key
+        ? `<div class="notebox">
+            <div class="notelbl">${ic('calendar')}Chiedi all'ufficio di spostare la data</div>
+            <input type="date" id="rsc-${id}" class="rsc-input">
+            <div class="noteact"><button class="btn ghost" onclick="closeResched()">Annulla</button>
+            <button class="btn ok" onclick="sendResched('${kind}','${id}')">${ic('check')}Invia richiesta</button></div></div>`
+        : `<button class="notebtn" onclick="openResched('${key}')">${ic('calendar')}Chiedi di spostare la data</button>`}
     </div>` : '';
   return `<div class="icard compact ${late?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
 }
 
 function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }
-function allegatiBlock(key, x){
-  const ups=UPLOADS[key]||[];
-  const cnt = ups.length || (x.allegati_count||0);
-  if(!cnt) return '';
-  const thumbs = ups.map(u=> isVideo(u)
-    ? `<a href="${u}" target="_blank" rel="noopener" class="thumb vid">${ic('film')}</a>`
-    : `<a href="${u}" target="_blank" rel="noopener" class="thumb" style="background-image:url('${u}')"></a>`).join('');
-  return `<div class="alleg"><div class="lbl">${ic('camera')}Allegati (${cnt}) · inviati all'ufficio</div>
-    ${thumbs?`<div class="thumbs">${thumbs}</div>`:''}</div>`;
+/* Sezione allegati CONDIVISA: mostra i file caricati dall'operatore E quelli aggiunti dall'ufficio
+   su Notion. Si carica dal vivo (URL freschi) quando la card è aperta. */
+let ALLEG={};
+function normUp(list){ return (list||[]).map(x => typeof x==='string' ? {url:x, video:isVideo(x)} : x); }
+function allegThumbsHtml(list){
+  list=(list||[]).filter(a=>a&&a.url);
+  if(!list.length) return '';
+  const thumbs=list.map(a=> a.video
+    ? `<a href="${esc(a.url)}" target="_blank" rel="noopener" class="thumb vid">${ic('film')}</a>`
+    : `<a href="${esc(a.url)}" target="_blank" rel="noopener" class="thumb" style="background-image:url('${esc(a.url)}')"></a>`).join('');
+  return `<div class="lbl">${ic('camera')}Allegati (${list.length}) · condivisi con l'ufficio</div><div class="thumbs">${thumbs}</div>`;
+}
+function allegatiBlock(key){
+  const list = ALLEG[key] || normUp(UPLOADS[key]);
+  return `<div class="alleg" id="alleg-${key}">${allegThumbsHtml(list)}</div>`;
+}
+async function fetchAllegati(kind,id){
+  const key=kind+':'+id;
+  try{
+    const r=await fetch(`${API}/allegati/${kind}/${id}`,{cache:'no-store'}); const j=await r.json();
+    if(j&&j.ok){ ALLEG[key]=j.allegati; const el=document.getElementById('alleg-'+key); if(el) el.innerHTML=allegThumbsHtml(j.allegati); }
+  }catch(_){}
 }
 
 /* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */
@@ -482,7 +507,7 @@ function commitPending(){
   const t=document.getElementById('toast'); t.classList.remove('show','undo');
   fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({kind:p.kind,id:p.id})})
-    .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; })
+    .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; if(j.note_operatore){ p.it.note_operatore=j.note_operatore; render(); } })
     .catch(()=>{ p.it.confermato_manutentore=false; render(); toast('Conferma non riuscita, riprova.'); });
 }
 function undoConferma(){
@@ -502,14 +527,35 @@ async function riattiva(kind,id){
     const r=await fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({kind,id,valore:false})});
     const j=await r.json(); if(!j.ok) throw 0;
-    toast('Riattivata');
+    if(j.note_operatore) it.note_operatore=j.note_operatore;
+    toast('Riattivata'); render();
   }catch(e){ it.confermato_manutentore=true; render(); toast('Non riuscito, riprova.'); }
 }
 
 /* Nota operatore ↔ ufficio */
-function openNota(key){ NOTE_OPEN=key; render();
+function openNota(key){ NOTE_OPEN=key; RESCHED_OPEN=null; render();
   const id=key.split(':')[1]; const t=document.getElementById('nota-'+id); if(t) t.focus(); }
 function closeNota(){ NOTE_OPEN=null; render(); }
+
+/* Richiesta ricalendarizzazione: l'operatore chiede una nuova data, NON la sposta lui.
+   Arriva all'ufficio nelle Note operatore. */
+function openResched(key){ RESCHED_OPEN=key; NOTE_OPEN=null; render();
+  const id=key.split(':')[1]; const el=document.getElementById('rsc-'+id);
+  if(el){ el.value=addDays(todayISO(),1); } }
+function closeResched(){ RESCHED_OPEN=null; render(); }
+async function sendResched(kind,id){
+  const el=document.getElementById('rsc-'+id); const dv=el&&el.value;
+  if(!dv){ toast('Scegli una data'); return; }
+  RESCHED_OPEN=null;
+  const testo=`📅 Richiesta ricalendarizzazione al ${dLong(dv)}`;
+  const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
+  try{
+    const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind,id,testo})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    if(it) it.note_operatore=j.note_operatore; toast("Richiesta inviata all'ufficio"); render();
+  }catch(e){ toast('Non riuscito, riprova'); render(); }
+}
 async function sendNota(kind,id){
   const t=document.getElementById('nota-'+id); const testo=(t&&t.value||'').trim();
   if(!testo){ toast('Scrivi qualcosa prima di inviare'); return; }
@@ -547,7 +593,8 @@ async function uploadFoto(e){
     try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
       if(j.ok){ ok++; if(j.url) UPLOADS[key].push(j.url); } }catch(_){}
   }
-  render();  // mostra subito le anteprime
+  render();  // mostra subito le anteprime (UPLOADS)
+  fetchAllegati(kind, id);  // poi allinea alla lista reale/condivisa su Notion
   // Traccia l'upload nelle note operatore (bullet con emoji), così resta a memoria su Notion
   if(ok>0){
     const bits=[];

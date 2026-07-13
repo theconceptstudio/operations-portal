@@ -73,6 +73,51 @@ def n_get(page_id):
     r.raise_for_status()
     return r.json()
 
+def _now_rome():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.now(ZoneInfo('Europe/Rome'))
+    except Exception:
+        return datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # fallback ora legale IT
+
+def _allegati_of(page):
+    """Lista file di 'Allegati': [{name, url, video}]. Gestisce sia i file esterni (Supabase,
+    caricati dall'operatore) sia quelli caricati su Notion dall'ufficio (url firmato che rinfreschiamo
+    ad ogni lettura)."""
+    files = (page.get('properties', {}).get('Allegati', {}) or {}).get('files', []) or []
+    out = []
+    for f in files:
+        url = (f.get('external') or f.get('file') or {}).get('url', '')
+        if not url:
+            continue
+        name = f.get('name', '')
+        low = (name + url).lower()
+        video = any(low.split('?')[0].endswith(e) for e in ('.mp4', '.mov', '.webm', '.m4v', '.avi'))
+        out.append({'name': name, 'url': url, 'video': video})
+    return out
+
+def _append_nota(item_id, table, testo):
+    """Aggiunge una riga (con timestamp gg/mm hh:mm ora italiana) alle Note operatore su Notion + mirror.
+    Idempotente: se l'ultima riga ha lo stesso testo, non la ripete (evita duplicati da retry/doppio invio)."""
+    page = n_get(item_id)
+    rt = (page.get('properties', {}).get('Note operatore', {}) or {}).get('rich_text', []) or []
+    existing = ''.join(t.get('plain_text', '') for t in rt)
+    testo = (testo or '').strip()
+    last = existing.rsplit('\n', 1)[-1] if existing else ''
+    last_body = last.split('] ', 1)[1].strip() if last.startswith('[') and '] ' in last else last.strip()
+    if last_body and last_body == testo:
+        return existing  # gia' presente: niente duplicato
+    stamp = _now_rome().strftime('%d/%m %H:%M')
+    nuovo = ((existing + '\n') if existing else '') + f'[{stamp}] {testo}'
+    nuovo = nuovo[-1990:]
+    n_patch(item_id, {'Note operatore': {'rich_text': [{'text': {'content': nuovo}}]}})
+    if SUPABASE_URL and SUPABASE_KEY:
+        _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
+                       headers=_sb_headers({'Prefer': 'return=minimal'}),
+                       params={'notion_id': f'eq.{item_id}'},
+                       json={'note_operatore': nuovo}, timeout=20)
+    return nuovo
+
 # ── Pagina portale (shell) ───────────────────────────────────────────────────
 @app.route('/o/<token>')
 def portale(token):
@@ -131,9 +176,15 @@ def conferma(token):
                        headers=_sb_headers({'Prefer': 'return=minimal'}),
                        params={'notion_id': f'eq.{item_id}'},
                        json={'confermato_manutentore': bool(valore), 'confermato_il': oggi}, timeout=20)
+        # Traccia conferma/riattivazione anche nelle Note operatore (con data e ora)
+        nuova_nota = None
+        try:
+            nuova_nota = _append_nota(item_id, table, '✅ Intervento confermato' if valore else '↩︎ Riaperta')
+        except requests.HTTPError:
+            pass
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'note_operatore': nuova_nota})
 
 @app.route('/api/o/<token>/nota', methods=['POST'])
 def nota(token):
@@ -146,20 +197,22 @@ def nota(token):
     if not (item_id and testo): return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
     table = 'op_tasks' if kind == 'task' else 'op_issues'
     try:
-        page = n_get(item_id)
-        rt = (page.get('properties', {}).get('Note operatore', {}) or {}).get('rich_text', []) or []
-        existing = ''.join(t.get('plain_text', '') for t in rt)
-        stamp = datetime.date.today().strftime('%d/%m')
-        nuovo = (existing + '\n' if existing else '') + f'[{stamp}] {testo}'
-        nuovo = nuovo[-1990:]  # limite rich_text Notion
-        n_patch(item_id, {'Note operatore': {'rich_text': [{'text': {'content': nuovo}}]}})
-        _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
-                       headers=_sb_headers({'Prefer': 'return=minimal'}),
-                       params={'notion_id': f'eq.{item_id}'},
-                       json={'note_operatore': nuovo}, timeout=20)
+        nuovo = _append_nota(item_id, table, testo)
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'note_operatore': nuovo})
+
+@app.route('/api/o/<token>/allegati/<kind>/<item_id>')
+def allegati(token, kind, item_id):
+    """Sezione allegati CONDIVISA: legge i file di 'Allegati' su Notion (freschi) — sia quelli
+    caricati dall'operatore dal portale sia quelli aggiunti dall'ufficio su Notion — e li restituisce."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    try:
+        page = n_get(item_id)
+    except requests.HTTPError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, 'allegati': _allegati_of(page)})
 
 _LAST_SYNC = {'ts': 0.0}
 @app.route('/api/o/<token>/refresh')
