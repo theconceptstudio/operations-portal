@@ -30,7 +30,7 @@ const ICN = {
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
-let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={};
+let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={}, SEL_RESCHED_DATE='';
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
 let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
@@ -125,7 +125,21 @@ function wkTouchEnd(e){ if(_wkX==null) return; const dx=e.changedTouches[0].clie
   if(Math.abs(dx)>45) shiftWeek(dx<0?1:-1); }
 
 /* Conferma multipla */
-function toggleSelMode(){ SELMODE=!SELMODE; SELECTED.clear(); render(); }
+function toggleSelMode(){ SELMODE=!SELMODE; SELECTED.clear(); if(SELMODE&&!SEL_RESCHED_DATE) SEL_RESCHED_DATE=addDays(todayISO(),1); render(); }
+async function reschedMulti(){
+  const dv=SEL_RESCHED_DATE; if(!dv){ toast('Scegli una data'); return; }
+  const keys=[...SELECTED]; if(!keys.length) return;
+  SELMODE=false; SELECTED=new Set();
+  const testo=`📅 Richiesta ricalendarizzazione al ${dLong(dv)}`;
+  render(); toast(`Invio ${keys.length} richiest${keys.length===1?'a':'e'}…`);
+  let ok=0;
+  for(const k of keys){ const i=k.indexOf(':'), kind=k.slice(0,i), id=k.slice(i+1);
+    const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
+    try{ const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind,id,testo})}); const j=await r.json(); if(j.ok){ ok++; if(it) it.note_operatore=j.note_operatore; } }catch(_){}
+  }
+  render(); toast(ok?`${ok} richieste inviate all'ufficio`:'Non riuscito, riprova');
+}
 function toggleSel(kind,id){ const k=kind+':'+id; if(SELECTED.has(k)) SELECTED.delete(k); else SELECTED.add(k); render(); }
 async function confermaMulti(){
   const keys=[...SELECTED]; if(!keys.length) return;
@@ -196,8 +210,12 @@ function viewDaFare(){
   if(!items.length){
     return chips+ctrl+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
   }
-  const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} selezionat${SELECTED.size===1?'a':'e'}</span>
-    <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma fatte</button></div>` : '';
+  const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
+    <div class="selacts">
+      <input type="date" id="selresched" class="rsc-input rsc-mini" value="${SEL_RESCHED_DATE}" oninput="SEL_RESCHED_DATE=this.value">
+      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="reschedMulti()">${ic('calendar')}Chiedi data</button>
+      <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
+    </div></div>` : '';
 
   const overdue=items.filter(isLate).sort(byPrio);
 

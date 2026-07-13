@@ -128,6 +128,36 @@ def sb_reconcile(table, current_ids):
             print(f'  [reconcile del] {table}: {d.status_code} {d.text[:200]}')
     return removed
 
+def sb_map(table, cols):
+    if not (SUPABASE_URL and SUPABASE_KEY): return {}
+    h = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
+    r = _session.get(f'{SUPABASE_URL}/rest/v1/{table}', headers=h, params={'select': cols}, timeout=30)
+    return {x['notion_id']: x for x in r.json()} if r.ok else {}
+
+def n_patch(page_id, props):
+    pid = page_id.replace('-', '')
+    _session.patch(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS,
+                   json={'properties': props}, timeout=20).raise_for_status()
+
+def _reset_confermato_su_spostamento(table, rows, date_key):
+    """Se una task/issue era 'Confermato dal manutentore' e la sua data è stata spostata (dall'ufficio
+    su Notion), togli la conferma: torna 'da fare' per l'operatore. Confronta la data col mirror precedente."""
+    prev = sb_map(table, f'notion_id,{date_key},confermato_manutentore')
+    n = 0
+    for row in rows:
+        p = prev.get(row['notion_id'])
+        if p and p.get('confermato_manutentore') and p.get(date_key) and row.get(date_key) and p[date_key] != row[date_key]:
+            try:
+                n_patch(row['notion_id'], {'Confermato dal manutentore': {'checkbox': False},
+                                           'Confermato il': {'date': None}})
+                row['confermato_manutentore'] = False
+                row['confermato_il'] = None
+                n += 1
+            except Exception as e:
+                print(f'  [reset-conferma] {row["notion_id"][:8]}: {e}')
+    if n: print(f'{table}: {n} conferme rimosse (data spostata)')
+    return n
+
 # ── Sync ────────────────────────────────────────────────────────────────────
 FIELD_ATTIVITA = {'Pulizia', 'Pulizia a Fondo', 'Manutenzioni', 'Tuttofare', 'Lavanderia'}
 
@@ -264,6 +294,7 @@ def sync_issues():
             'confermato_il': conf_il,
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
+    _reset_confermato_su_spostamento('op_issues', rows, 'data_intervento')
     n = sb_upsert('op_issues', rows)
     rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows])
     print(f'issues: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
@@ -298,6 +329,7 @@ def sync_tasks():
             'confermato_il': date_start(pr.get('Confermato il')),
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
+    _reset_confermato_su_spostamento('op_tasks', rows, 'due_date')
     n = sb_upsert('op_tasks', rows)
     rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows])
     print(f'tasks: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
