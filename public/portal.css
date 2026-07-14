@@ -388,3 +388,5 @@ svg{display:block}
 @media (min-width:1440px){
   .grid{grid-template-columns:1fr 1fr 1fr}
 }
+
+.rsc-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0}

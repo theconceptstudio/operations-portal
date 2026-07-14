@@ -126,6 +126,14 @@ function wkTouchEnd(e){ if(_wkX==null) return; const dx=e.changedTouches[0].clie
 
 /* Conferma multipla */
 function toggleSelMode(){ SELMODE=!SELMODE; SELECTED.clear(); if(SELMODE&&!SEL_RESCHED_DATE) SEL_RESCHED_DATE=addDays(todayISO(),1); render(); }
+function pickReschedMulti(){
+  if(!SELECTED.size){ toast('Seleziona prima le task'); return; }
+  const inp=document.getElementById('selresched'); if(!inp) return;
+  inp.value=SEL_RESCHED_DATE||addDays(todayISO(),1);
+  if(inp.showPicker){ try{ inp.showPicker(); return; }catch(_){} }
+  inp.click();
+}
+function reschedMultiPicked(dv){ if(!dv) return; SEL_RESCHED_DATE=dv; reschedMulti(); }
 async function reschedMulti(){
   const dv=SEL_RESCHED_DATE; if(!dv){ toast('Scegli una data'); return; }
   const keys=[...SELECTED]; if(!keys.length) return;
@@ -212,8 +220,8 @@ function viewDaFare(){
   }
   const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
     <div class="selacts">
-      <input type="date" id="selresched" class="rsc-input rsc-mini" value="${SEL_RESCHED_DATE}" oninput="SEL_RESCHED_DATE=this.value">
-      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="reschedMulti()">${ic('calendar')}Chiedi data</button>
+      <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
+      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
       <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
     </div></div>` : '';
 
