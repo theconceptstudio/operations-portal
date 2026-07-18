@@ -32,6 +32,9 @@ const ICN = {
   trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>',
   box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  arrowUp:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
@@ -42,8 +45,9 @@ let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
 
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
-let RIF_APTS=null, RIF_APT=null, RIF_APTNAME='', RIF_CART=new Set(), RIF_CUSTOM=[],
-    RIF_URG='2w', RIF_CARTOPEN=false, RIF_SUGG=null;
+let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
+    RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
+    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null;
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
@@ -51,10 +55,9 @@ const CATALOG=[
   {cat:'Pavimenti', color:'#8a6d3b', items:['Detersivo pavimenti legno','Detersivo pavimenti mattonelle']},
   {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne','Paglietta metallo']},
   {cat:'Carta', color:'#9A9183', items:['Carta igienica']},
-  {cat:'Piatti & Lavaggio', color:'#7A5AA8', items:['Detersivo piatti','Capsule lavastoviglie','Sale lavastoviglie','Brillantante lavastoviglie','Capsule/detersivo lavatrice']},
-  {cat:'Cortesia ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani']},
-  {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Spray disinfettante antiodore']},
-  {cat:'Dispensa / Ricariche', color:'#b5892e', items:['Caffè','Zucchero bianco','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
+  {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Disinfettante tessuti / antiodore']},
+  {cat:'Lavaggio', color:'#7A5AA8', items:['Capsule lavastoviglie','Sale lavastoviglie','Brillantante','Capsule/detersivo lavatrice']},
+  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
 ];
 function rifCatOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.cat:'Altro'; }
 function rifColorOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.color:'#9A9183'; }
@@ -453,30 +456,33 @@ async function rifEnsureApts(){
   try{
     const r=await fetch(`${API}/rif-appartamenti`,{cache:'no-store'}); const j=await r.json();
     RIF_APTS=(j&&j.ok)?j.appartamenti:[];
-    if(RIF_APTS.length===1){ RIF_APT=RIF_APTS[0].id; RIF_APTNAME=RIF_APTS[0].nome; }
+    if(RIF_APTS.length===1){ RIF_APT=RIF_APTS[0].id; RIF_APTVIA=RIF_APTS[0].via; }
   }catch(_){ RIF_APTS=[]; }
   if(TAB==='rifornimenti') render();
 }
-function rifPickApt(id,nome){ RIF_APT=id; RIF_APTNAME=nome; render(); }
-function rifChangeApt(){ RIF_APT=null; RIF_APTNAME=''; RIF_CARTOPEN=false; render(); }
+function rifPickApt(id,via){ RIF_APT=id; RIF_APTVIA=via; render(); }
+function rifChangeApt(){ RIF_APT=null; RIF_APTVIA=''; RIF_CARTOPEN=false; render(); }
 function rifInCart(name){ return RIF_CART.has(name)||RIF_CUSTOM.includes(name); }
 function rifToggle(name){
-  if(RIF_CART.has(name)) RIF_CART.delete(name);
-  else if(RIF_CUSTOM.includes(name)) RIF_CUSTOM=RIF_CUSTOM.filter(x=>x!==name);
+  if(RIF_CART.has(name)){ RIF_CART.delete(name); RIF_URGENT.delete(name); }
+  else if(RIF_CUSTOM.includes(name)){ RIF_CUSTOM=RIF_CUSTOM.filter(x=>x!==name); RIF_URGENT.delete(name); }
   else RIF_CART.add(name);
   render();
 }
+function rifToggleUrgent(name){ if(RIF_URGENT.has(name)) RIF_URGENT.delete(name); else RIF_URGENT.add(name); render(); }
 let RIF_Q='';
 function rifFilter(){ const el=document.getElementById('rifq'); RIF_Q=el?el.value:''; rifApplyFilter(); }
 function rifApplyFilter(){
   const q=rifNorm(RIF_Q||'');
   document.querySelectorAll('#rifcat .rifgroup').forEach(g=>{
     let vis=0;
-    g.querySelectorAll('.rifrow').forEach(r=>{ const show=!q||r.dataset.name.includes(q);
+    g.querySelectorAll('.rifrow').forEach(r=>{ const show=!q||(r.dataset.name||'').includes(q);
       r.style.display=show?'':'none'; if(show)vis++; });
     g.style.display=vis?'':'none';
   });
 }
+function rifScrollTop(){ window.scrollTo({top:0,behavior:'smooth'});
+  const el=document.getElementById('rifq'); if(el) setTimeout(()=>el.focus(),350); }
 function rifSuggestFor(q){
   const nq=rifNorm(q); if(nq.length<2) return null;
   for(const g of CATALOG) for(const it of g.items){ const ni=rifNorm(it);
@@ -510,31 +516,54 @@ async function rifSend(){
   const gruppi=Object.keys(map).map(cat=>({cat,items:map[cat]}));
   const tot=RIF_CART.size+RIF_CUSTOM.length;
   if(!RIF_APT||!tot){ toast('Aggiungi almeno un prodotto'); return; }
+  const urgenti=[...RIF_URGENT].filter(n=>rifInCart(n));
+  const nuovi=[...RIF_CUSTOM];
   toast('Invio l\'ordine…');
   try{
     const r=await fetch(`${API}/rifornimento`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appartamento_id:RIF_APT,appartamento_nome:RIF_APTNAME,urgenza:RIF_URG,gruppi})});
+      body:JSON.stringify({appartamento_id:RIF_APT,urgenza:RIF_URG,gruppi,urgenti,nuovi})});
     const j=await r.json(); if(!j.ok) throw 0;
-    RIF_CART=new Set(); RIF_CUSTOM=[]; RIF_CARTOPEN=false; RIF_Q='';
-    render(); toast(`Ordine inviato all'ufficio · ${tot} prodott${tot===1?'o':'i'}`);
+    RIF_CART=new Set(); RIF_CUSTOM=[]; RIF_URGENT=new Set(); RIF_CARTOPEN=false; RIF_Q='';
+    RIF_STORICO=null;  // la cronologia va ricaricata
+    RIF_DONE=tot; render();
   }catch(e){ toast('Ordine non inviato, riprova'); }
+}
+function rifDoneClose(){ RIF_DONE=null; render(); }
+function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
+
+/* Cronologia ordini */
+function rifShowStorico(){ RIF_VIEW='storico'; render(); if(RIF_STORICO===null) rifLoadStorico(); }
+function rifBackCatalogo(){ RIF_VIEW='catalogo'; render(); }
+async function rifLoadStorico(){
+  try{
+    const r=await fetch(`${API}/rif-storico`,{cache:'no-store'}); const j=await r.json();
+    RIF_STORICO=(j&&j.ok)?j.storico:[];
+  }catch(_){ RIF_STORICO=[]; }
+  if(TAB==='rifornimenti'&&RIF_VIEW==='storico') render();
 }
 
 const RIF_URG_OPT=[['1w','~1 settimana','Urgente'],['2w','~2 settimane','Normale'],['4w','~4 sett. o più','Con calma']];
+const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato':'#3f8f5e','Reso':'#8a6d3b'};
+
 function viewRifornimenti(){
   if(RIF_APTS===null) return `<div class="empty-state">${ic('cart')}<div class="t">Carico…</div></div>`;
   if(!RIF_APTS.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun appartamento assegnato</div>Contatta l'ufficio per essere abilitato agli ordini.</div>`;
 
-  // Selettore appartamento (se più d'uno e non ancora scelto)
+  // Cronologia
+  if(RIF_VIEW==='storico') return viewStorico();
+
+  // Selettore appartamento (se più d'uno e non ancora scelto) — mostriamo la VIA
   if(!RIF_APT){
     return `<div class="rifintro">${ic('cart')}<div><b>Cosa manca in casa?</b><span>Scegli l'appartamento, poi aggiungi i prodotti al carrello.</span></div></div>
-      <div class="riflbl">Per quale appartamento?</div>
-      <div class="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" onclick="rifPickApt('${a.id}','${esc(a.nome).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.nome)}</button>`).join('')}</div>`;
+      <div class="rifbar"><span class="riflbl">Per quale appartamento?</span>
+        <button class="rifchg" onclick="rifShowStorico()">${ic('history')}Cronologia</button></div>
+      <div class="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" onclick="rifPickApt('${a.id}','${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}</div>`;
   }
 
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
   const changeBtn = RIF_APTS.length>1 ? `<button class="rifchg" onclick="rifChangeApt()">Cambia</button>` : '';
-  const head=`<div class="rifhead"><span class="rifha">${ic('pin')}<b>${esc(RIF_APTNAME)}</b></span>${changeBtn}</div>`;
+  const head=`<div class="rifhead"><span class="rifha">${ic('pin')}<b>${esc(RIF_APTVIA)}</b></span>
+    <span class="rifheadr"><button class="rifchg" onclick="rifShowStorico()">${ic('history')}Cronologia</button>${changeBtn}</span></div>`;
   const searchbar=`<div class="rifsearch">${ic('search')}<input id="rifq" placeholder="Cerca un prodotto…" value="${esc(RIF_Q)}" oninput="rifFilter()"></div>`;
 
   const cat=`<div id="rifcat">${CATALOG.map(g=>{
@@ -559,10 +588,12 @@ function viewRifornimenti(){
       <button class="rifaddbtn" onclick="rifCustomAdd()">${ic('plus')}Aggiungi</button></div>
     <div id="rifsugg"></div></div>`;
 
+  const up=`<button class="riftop" onclick="rifScrollTop()" title="Torna su">${ic('arrowUp')}</button>`;
   const fab = nCart ? `<button class="riffab" onclick="toggleRifCart()">${ic('cart')}<span class="riffabn">${nCart}</span>Vedi carrello</button>` : '';
   const drawer = RIF_CARTOPEN ? rifDrawer() : '';
+  const done = RIF_DONE!=null ? rifDoneOverlay() : '';
 
-  return head+searchbar+cat+custom+custbox+`<div class="riffabsp"></div>`+fab+drawer;
+  return head+searchbar+cat+custom+custbox+`<div class="riffabsp"></div>`+up+fab+drawer+done;
 }
 
 function rifDrawer(){
@@ -571,19 +602,60 @@ function rifDrawer(){
   RIF_CUSTOM.forEach(n=>{ (map['Altro']=map['Altro']||[]).push(n); });
   const cats=Object.keys(map);
   const tot=RIF_CART.size+RIF_CUSTOM.length;
-  const groups=cats.map(c=>`<div class="rifdg"><div class="rifdgc">${esc(c)}</div>${map[c].map(n=>
-    `<div class="rifditem"><span class="rifdot" style="background:${rifColorOf(n)}"></span><span>${esc(n)}</span>
-      <button class="rifdel" onclick="rifToggle('${n.replace(/'/g,"\\'")}')">${ic('trash')}</button></div>`).join('')}</div>`).join('');
-  const urg=`<div class="rifurg"><div class="riflbl2">${ic('clock')}Tra quanto serve?</div>
+  const nUrg=[...RIF_URGENT].filter(n=>rifInCart(n)).length;
+  const groups=cats.map(c=>`<div class="rifdg"><div class="rifdgc">${esc(c)}</div>${map[c].map(n=>{
+    const u=RIF_URGENT.has(n);
+    return `<div class="rifditem ${u?'urg':''}"><span class="rifdot" style="background:${rifColorOf(n)}"></span>
+      <span class="rifdnm">${esc(n)}</span>
+      <button class="rifflag ${u?'on':''}" onclick="rifToggleUrgent('${n.replace(/'/g,"\\'")}')" title="Segna urgente">${ic('bolt')}</button>
+      <button class="rifdel" onclick="rifToggle('${n.replace(/'/g,"\\'")}')" title="Rimuovi">${ic('trash')}</button></div>`;}).join('')}</div>`).join('');
+  const hint=`<div class="rifhint">${ic('bolt')}Tocca il fulmine su un prodotto per segnarlo <b>urgente</b> (gli altri restano all'urgenza generale qui sotto).</div>`;
+  const urg=`<div class="rifurg"><div class="riflbl2">${ic('clock')}Tra quanto serve (in generale)?</div>
     <div class="rifurgseg">${RIF_URG_OPT.map(([k,a,b])=>`<button class="rifubtn ${RIF_URG===k?'on':''}" onclick="rifSetUrg('${k}')">
       <b>${a}</b><span>${b}</span></button>`).join('')}</div></div>`;
+  const urgBadge=nUrg?`<span class="rifub2">${ic('bolt')}${nUrg} urgent${nUrg===1?'e':'i'}</span>`:'';
   return `<div class="rifback" onclick="toggleRifCart()"></div>
     <div class="rifdrawer">
-      <div class="rifdhd"><span>${ic('cart')}Carrello · ${esc(RIF_APTNAME)}</span>
+      <div class="rifdhd"><span>${ic('cart')}Carrello · ${esc(RIF_APTVIA)}</span>
         <button class="rifdx" onclick="toggleRifCart()">${ic('chevronD')}</button></div>
-      <div class="rifdbody">${groups}${urg}</div>
-      <button class="rifsend" onclick="rifSend()">${ic('check')}Invia ordine all'ufficio · ${tot} prodott${tot===1?'o':'i'}</button>
+      <div class="rifdbody">${groups}${hint}${urg}</div>
+      <button class="rifsend" onclick="rifSend()">${ic('check')}Invia ordine · ${tot} prodott${tot===1?'o':'i'}${urgBadge}</button>
     </div>`;
+}
+
+/* Bella conferma dopo l'invio */
+function rifDoneOverlay(){
+  const n=RIF_DONE;
+  return `<div class="rifdone">
+    <div class="rifdonecard">
+      <div class="rifdonechk">${ic('check')}</div>
+      <div class="rifdonet">Ordine inviato!</div>
+      <div class="rifdones">L'ufficio ha ricevuto la tua richiesta di ${n} prodott${n===1?'o':'i'}.<br>Ci pensiamo noi.</div>
+      <div class="rifdoneact">
+        <button class="rifdoneb2" onclick="rifDoneStorico()">${ic('history')}Vedi cronologia</button>
+        <button class="rifdoneb" onclick="rifDoneClose()">${ic('check')}Fatto</button>
+      </div>
+    </div></div>`;
+}
+
+/* Cronologia rifornimenti — semplice da leggere */
+function viewStorico(){
+  const back=`<div class="rifhead"><button class="rifback2" onclick="rifBackCatalogo()">${ic('chevronL')}Torna ai prodotti</button></div>
+    <div class="rifintro">${ic('history')}<div><b>Cronologia rifornimenti</b><span>Gli ordini già inviati, dal più recente. Utile per non riordinare due volte.</span></div></div>`;
+  if(RIF_STORICO===null) return back+`<div class="empty-state">${ic('history')}<div class="t">Carico…</div></div>`;
+  if(!RIF_STORICO.length) return back+`<div class="empty-state">${ic('info')}<div class="t">Nessun ordine ancora</div>Quando invii un ordine comparirà qui.</div>`;
+  const cards=RIF_STORICO.map(o=>{
+    const col=RIF_STATO_COL[o.stato]||'#9A9183';
+    const data=o.data?dShort(o.data):'';
+    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'');
+    return `<div class="rifhist">
+      <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
+        <span class="rifhstato" style="color:${col};border-color:${col}">${esc(o.stato||'—')}</span></div>
+      <div class="rifhistd">${ic('calendar')}${esc(data)}</div>
+      ${prod?`<div class="rifhistp">${esc(prod)}</div>`:''}
+    </div>`;
+  }).join('');
+  return back+`<div class="rifhistlist">${cards}</div>`;
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */

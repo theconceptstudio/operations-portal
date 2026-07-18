@@ -279,22 +279,72 @@ def foto(token):
     return jsonify({'ok': True, 'url': url})
 
 # ── Rifornimenti (carrello → ordine su Expenses Tracker) ─────────────────────
-@app.route('/api/o/<token>/rif-appartamenti')
-def rif_appartamenti(token):
-    """Appartamenti per cui l'operatore può ordinare: quelli di cui è Responsabile Pulizia,
-    più quelli che compaiono nelle sue pulizie (fallback). Solo i suoi, mai quelli altrui."""
-    op = operatore_by_token(token)
-    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
-    oid = op['notion_id']
-    apt = apt_map()
+def _op_apt_ids(oid):
+    """Id (senza trattini) degli appartamenti dell'operatore: dove è Responsabile Pulizia
+    più quelli che compaiono nelle sue pulizie. Solo i suoi, mai quelli altrui."""
     ids = set()
     for a in sb_get('op_appartamenti', {'responsabile_notion_id': f'eq.{oid}', 'select': 'notion_id'}):
         ids.add(a['notion_id'])
     for p in sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}', 'select': 'appartamento_notion_id'}):
         if p.get('appartamento_notion_id'): ids.add(p['appartamento_notion_id'])
-    out = [{'id': i, 'nome': (apt.get(i) or {}).get('nome') or '—'} for i in ids]
-    out.sort(key=lambda x: x['nome'].lower())
+    return ids
+
+def n_query_db(db_id, body):
+    r = _session.post(f'https://api.notion.com/v1/databases/{db_id.replace("-", "")}/query',
+                      headers=N_HEADERS, json=body, timeout=30)
+    r.raise_for_status()
+    return r.json().get('results', [])
+
+@app.route('/api/o/<token>/rif-appartamenti')
+def rif_appartamenti(token):
+    """Appartamenti per cui l'operatore può ordinare. Mostriamo la VIA (gli operatori
+    ragionano per indirizzo, non per nome)."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    apt = apt_map()
+    ids = _op_apt_ids(op['notion_id'])
+    out = []
+    for i in ids:
+        a = apt.get(i) or {}
+        out.append({'id': i, 'via': a.get('indirizzo') or a.get('nome') or '—', 'nome': a.get('nome') or '—'})
+    out.sort(key=lambda x: x['via'].lower())
     resp = jsonify({'ok': True, 'appartamenti': out})
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+@app.route('/api/o/<token>/rif-storico')
+def rif_storico(token):
+    """Cronologia ordini rifornimenti dei SOLI appartamenti dell'operatore, dal più recente.
+    Serve per capire se una cosa è già stata ordinata. Prodotti letti dal campo Note (riepilogo)."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    my = _op_apt_ids(op['notion_id'])
+    if not my:
+        return jsonify({'ok': True, 'storico': []})
+    apt = apt_map()
+    try:
+        results = n_query_db(DB_EXPENSES, {
+            'filter': {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
+            'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40})
+    except requests.HTTPError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    out = []
+    for p in results:
+        pr = p.get('properties', {})
+        rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
+        if not (set(rel) & my):
+            continue
+        a = apt.get(rel[0]) if rel else {}
+        a = a or {}
+        note = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
+        out.append({
+            'data': ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start'),
+            'via': a.get('indirizzo') or a.get('nome') or '—',
+            'stato': ((pr.get('Stato', {}) or {}).get('select') or {}).get('name'),
+            'priority': ((pr.get('Priority', {}) or {}).get('select') or {}).get('name'),
+            'prodotti': note,
+        })
+    resp = jsonify({'ok': True, 'storico': out})
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 
@@ -302,34 +352,55 @@ def rif_appartamenti(token):
 def rifornimento(token):
     """Crea un ordine rifornimenti sull'Expenses Tracker di Notion: pagina con Categoria
     'Rifornimenti Scorte', Stato 'Da acquistare', Data Acquisto oggi, Priority dall'urgenza,
-    appartamento collegato e i prodotti come checklist (to-do) nel corpo pagina."""
+    appartamento collegato e i prodotti come checklist (to-do) nel corpo pagina. I prodotti
+    urgenti sono marcati 🔴 (e alzano la Priority a Very High); i prodotti nuovi non in lista
+    sono marcati 🆕 così l'ufficio può aggiornare le categorie."""
     op = operatore_by_token(token)
     if not op: return jsonify({'ok': False, 'error': 'token'}), 404
     d = request.get_json(force=True)
     apt_id = (d.get('appartamento_id') or '').strip()
-    apt_nome = (d.get('appartamento_nome') or '').strip()
     urg = d.get('urgenza') if d.get('urgenza') in RIF_PRIORITY else '2w'
     gruppi = d.get('gruppi') or []   # [{cat, items:[nome,...]}]
+    nuovi = set(str(x).strip() for x in (d.get('nuovi') or []))
+    urgenti = set(str(x).strip() for x in (d.get('urgenti') or []))
     tot = sum(len(g.get('items') or []) for g in gruppi)
     if not (apt_id and tot):
         return jsonify({'ok': False, 'error': 'appartamento o prodotti mancanti'}), 400
 
+    apt = apt_map().get(apt_id) or {}
+    apt_nome = apt.get('nome') or (d.get('appartamento_nome') or 'appartamento')   # nome per Andres nel titolo
+
     oggi = _now_rome()
+    has_urg = bool(urgenti)
+    priority = 'Very High' if has_urg else RIF_PRIORITY[urg]
+
+    # riepilogo prodotti nel campo Note → cronologia veloce (senza rileggere i blocchi)
+    riepilogo = []
+    for g in gruppi:
+        for it in (g.get('items') or []):
+            it = str(it).strip()
+            if not it: continue
+            riepilogo.append(('🔴 ' if it in urgenti else '') + it + (' (nuovo)' if it in nuovi else ''))
+    nota_sunto = (f'Prodotti ({tot}): ' + ', '.join(riepilogo))[:1990]
+
     props = {
-        'Descrizione': {'title': [{'text': {'content': f'Rifornimenti — {apt_nome or "appartamento"} — {oggi.strftime("%d/%m")}'}}]},
+        'Descrizione': {'title': [{'text': {'content': f'Rifornimenti — {apt_nome} — {oggi.strftime("%d/%m")}'}}]},
         'Categoria': {'select': {'name': 'Rifornimenti Scorte'}},
         'Stato': {'select': {'name': 'Da acquistare'}},
         'Chi paga?': {'select': {'name': 'The Concept w/Charge'}},
-        'Priority': {'select': {'name': RIF_PRIORITY[urg]}},
+        'Priority': {'select': {'name': priority}},
         'Data Acquisto': {'date': {'start': oggi.date().isoformat()}},
+        'Note': {'rich_text': [{'text': {'content': nota_sunto}}]},
+        'Appartamento': {'relation': [{'id': _dash(apt_id)}]},
     }
-    if apt_id:
-        props['Appartamento'] = {'relation': [{'id': _dash(apt_id)}]}
 
     # Corpo pagina: intestazione + checklist prodotti raggruppati per area
+    testa = (f'Richiesta rifornimenti da {op.get("nome") or "operatore"} · {oggi.strftime("%d/%m %H:%M")}'
+             f' · urgenza generale: {RIF_URG_LBL[urg]}')
+    if has_urg: testa += ' · ⚠️ contiene prodotti URGENTI (🔴)'
+    if nuovi: testa += ' · 🆕 contiene prodotti NUOVI non in lista'
     children = [{'object': 'block', 'type': 'callout', 'callout': {
-        'icon': {'emoji': '🛒'},
-        'rich_text': [{'text': {'content': f'Richiesta rifornimenti da {op.get("nome") or "operatore"} · {oggi.strftime("%d/%m %H:%M")} · urgenza: {RIF_URG_LBL[urg]}'}}]}}]
+        'icon': {'emoji': '🛒'}, 'rich_text': [{'text': {'content': testa}}]}}]
     for g in gruppi:
         items = [str(x).strip() for x in (g.get('items') or []) if str(x).strip()]
         if not items: continue
@@ -338,8 +409,11 @@ def rifornimento(token):
             children.append({'object': 'block', 'type': 'heading_3',
                              'heading_3': {'rich_text': [{'text': {'content': cat}}]}})
         for nome in items:
+            txt = nome
+            if nome in nuovi: txt += ' — 🆕 NUOVO (non in lista, valuta di aggiungerlo alle categorie)'
+            if nome in urgenti: txt = '🔴 URGENTE — ' + txt
             children.append({'object': 'block', 'type': 'to_do',
-                             'to_do': {'rich_text': [{'text': {'content': nome[:200]}}], 'checked': False}})
+                             'to_do': {'rich_text': [{'text': {'content': txt[:200]}}], 'checked': False}})
     # Notion accetta max 100 blocchi alla creazione
     children = children[:100]
 
