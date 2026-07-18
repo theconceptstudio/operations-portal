@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "portale",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
       "runtimeArgs": ["app.py"],
       "port": 3005
     }

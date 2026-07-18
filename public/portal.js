@@ -26,6 +26,12 @@ const ICN = {
   broom:'<path d="M4 20l7-7"/><path d="M13 11l4-4a2.8 2.8 0 0 1 4 4l-4 4"/><path d="M11 13l3 3-4 4H6l-2-2 4-4z"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4"/>',
+  cart:'<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.2 12.5a1.5 1.5 0 0 0 1.5 1.2h8.7a1.5 1.5 0 0 0 1.5-1.2L21 7H6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  minus:'<path d="M5 12h14"/>',
+  trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>',
+  box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
@@ -34,6 +40,25 @@ let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOAD
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
 let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
+
+/* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
+let RIF_APTS=null, RIF_APT=null, RIF_APTNAME='', RIF_CART=new Set(), RIF_CUSTOM=[],
+    RIF_URG='2w', RIF_CARTOPEN=false, RIF_SUGG=null;
+/* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
+const CATALOG=[
+  {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
+  {cat:'Superfici / Cucina', color:'#3f8f5e', items:['Multisuperficie al limone','Antistatico per la polvere','Detergente vetri','Detergente sbiancante (cloro/candeggina)']},
+  {cat:'Pavimenti', color:'#8a6d3b', items:['Detersivo pavimenti legno','Detersivo pavimenti mattonelle']},
+  {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne','Paglietta metallo']},
+  {cat:'Carta', color:'#9A9183', items:['Carta igienica']},
+  {cat:'Piatti & Lavaggio', color:'#7A5AA8', items:['Detersivo piatti','Capsule lavastoviglie','Sale lavastoviglie','Brillantante lavastoviglie','Capsule/detersivo lavatrice']},
+  {cat:'Cortesia ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani']},
+  {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Spray disinfettante antiodore']},
+  {cat:'Dispensa / Ricariche', color:'#b5892e', items:['Caffè','Zucchero bianco','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
+];
+function rifCatOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.cat:'Altro'; }
+function rifColorOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.color:'#9A9183'; }
+function rifNorm(s){ return (s||'').toLowerCase().replace(/[«»"']/g,'').replace(/\s+/g,' ').trim(); }
 const OFFICE_WA=''; // numero WhatsApp back office (es. '393331234567'); vuoto = l'operatore sceglie il contatto
 
 function todayISO(){ return iso(new Date()); }
@@ -76,6 +101,9 @@ async function triggerSync(){
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
+  if(RIF_CARTOPEN) return;  // non ricostruire mentre l'operatore è nel carrello
+  const ae=document.activeElement;  // né mentre sta digitando (ricerca / prodotto custom)
+  if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
   _refreshing=true;
   try{
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
@@ -98,14 +126,18 @@ function counts(){
 
 function render(){
   const c=counts();
+  const nCart=RIF_CART.size+RIF_CUSTOM.length;
+  const view = TAB==='dafare'?viewDaFare() : TAB==='pulizie'?viewPulizie() : viewRifornimenti();
   document.getElementById('app').innerHTML=
     `<div class="tabs"><div class="wrap">
       <button class="tab ${TAB==='dafare'?'on':''}" onclick="setTab('dafare')">${ic('clipboard')}Da fare <span class="n">${c.m+c.t}</span></button>
       <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie</button>
+      <button class="tab ${TAB==='rifornimenti'?'on':''}" onclick="setTab('rifornimenti')">${ic('cart')}Rifornimenti${nCart?` <span class="n">${nCart}</span>`:''}</button>
     </div></div>
-    <div class="content">${TAB==='dafare'?viewDaFare():viewPulizie()}</div>`;
+    <div class="content">${view}</div>`;
+  if(TAB==='rifornimenti' && RIF_Q) rifApplyFilter();
 }
-function setTab(t){ TAB=t; OPEN_CARDS.clear(); render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); if(t==='rifornimenti') rifEnsureApts(); render(); }
 function setFilter(f){ FILTER=f; OPEN_CARDS.clear(); render(); }
 function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
@@ -414,6 +446,145 @@ function pCard(p){
 }
 function pick(d){ SEL=d; render(); }
 function shiftWeek(n){ WEEK0=addDays(WEEK0,7*n); render(); }
+
+/* ── RIFORNIMENTI (carrello → ordine su Notion) ─────────────────────── */
+async function rifEnsureApts(){
+  if(RIF_APTS!==null) return;
+  try{
+    const r=await fetch(`${API}/rif-appartamenti`,{cache:'no-store'}); const j=await r.json();
+    RIF_APTS=(j&&j.ok)?j.appartamenti:[];
+    if(RIF_APTS.length===1){ RIF_APT=RIF_APTS[0].id; RIF_APTNAME=RIF_APTS[0].nome; }
+  }catch(_){ RIF_APTS=[]; }
+  if(TAB==='rifornimenti') render();
+}
+function rifPickApt(id,nome){ RIF_APT=id; RIF_APTNAME=nome; render(); }
+function rifChangeApt(){ RIF_APT=null; RIF_APTNAME=''; RIF_CARTOPEN=false; render(); }
+function rifInCart(name){ return RIF_CART.has(name)||RIF_CUSTOM.includes(name); }
+function rifToggle(name){
+  if(RIF_CART.has(name)) RIF_CART.delete(name);
+  else if(RIF_CUSTOM.includes(name)) RIF_CUSTOM=RIF_CUSTOM.filter(x=>x!==name);
+  else RIF_CART.add(name);
+  render();
+}
+let RIF_Q='';
+function rifFilter(){ const el=document.getElementById('rifq'); RIF_Q=el?el.value:''; rifApplyFilter(); }
+function rifApplyFilter(){
+  const q=rifNorm(RIF_Q||'');
+  document.querySelectorAll('#rifcat .rifgroup').forEach(g=>{
+    let vis=0;
+    g.querySelectorAll('.rifrow').forEach(r=>{ const show=!q||r.dataset.name.includes(q);
+      r.style.display=show?'':'none'; if(show)vis++; });
+    g.style.display=vis?'':'none';
+  });
+}
+function rifSuggestFor(q){
+  const nq=rifNorm(q); if(nq.length<2) return null;
+  for(const g of CATALOG) for(const it of g.items){ const ni=rifNorm(it);
+    if(ni===nq) return null;
+    if(ni.includes(nq)||nq.split(' ').some(w=>w.length>2&&ni.includes(w))) return it; }
+  return null;
+}
+function rifCustomType(){
+  const el=document.getElementById('rifcust'); const box=document.getElementById('rifsugg');
+  if(!el||!box) return;
+  const s=rifSuggestFor(el.value);
+  box.innerHTML = s ? `<div class="rifsg">Forse intendi <b>${esc(s)}</b>?
+    <button class="rifsgbtn" onclick="rifPickSugg('${s.replace(/'/g,"\\'")}')">${ic('plus')}Aggiungi questo</button></div>` : '';
+}
+function rifPickSugg(name){ if(!rifInCart(name)) RIF_CART.add(name);
+  const el=document.getElementById('rifcust'); if(el) el.value=''; render(); }
+function rifCustomAdd(){
+  const el=document.getElementById('rifcust'); const v=(el&&el.value||'').trim(); if(!v){ return; }
+  // se combacia con un prodotto del catalogo, aggiungi quello (niente doppioni)
+  const match=CATALOG.flatMap(g=>g.items).find(it=>rifNorm(it)===rifNorm(v));
+  if(match){ if(!rifInCart(match)) RIF_CART.add(match); }
+  else if(!RIF_CUSTOM.some(x=>rifNorm(x)===rifNorm(v))) RIF_CUSTOM.push(v);
+  render();
+}
+function rifSetUrg(u){ RIF_URG=u; render(); }
+function toggleRifCart(){ RIF_CARTOPEN=!RIF_CARTOPEN; render(); }
+async function rifSend(){
+  const map={};
+  [...RIF_CART].forEach(n=>{ const c=rifCatOf(n); (map[c]=map[c]||[]).push(n); });
+  RIF_CUSTOM.forEach(n=>{ (map['Altro']=map['Altro']||[]).push(n); });
+  const gruppi=Object.keys(map).map(cat=>({cat,items:map[cat]}));
+  const tot=RIF_CART.size+RIF_CUSTOM.length;
+  if(!RIF_APT||!tot){ toast('Aggiungi almeno un prodotto'); return; }
+  toast('Invio l\'ordine…');
+  try{
+    const r=await fetch(`${API}/rifornimento`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appartamento_id:RIF_APT,appartamento_nome:RIF_APTNAME,urgenza:RIF_URG,gruppi})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    RIF_CART=new Set(); RIF_CUSTOM=[]; RIF_CARTOPEN=false; RIF_Q='';
+    render(); toast(`Ordine inviato all'ufficio · ${tot} prodott${tot===1?'o':'i'}`);
+  }catch(e){ toast('Ordine non inviato, riprova'); }
+}
+
+const RIF_URG_OPT=[['1w','~1 settimana','Urgente'],['2w','~2 settimane','Normale'],['4w','~4 sett. o più','Con calma']];
+function viewRifornimenti(){
+  if(RIF_APTS===null) return `<div class="empty-state">${ic('cart')}<div class="t">Carico…</div></div>`;
+  if(!RIF_APTS.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun appartamento assegnato</div>Contatta l'ufficio per essere abilitato agli ordini.</div>`;
+
+  // Selettore appartamento (se più d'uno e non ancora scelto)
+  if(!RIF_APT){
+    return `<div class="rifintro">${ic('cart')}<div><b>Cosa manca in casa?</b><span>Scegli l'appartamento, poi aggiungi i prodotti al carrello.</span></div></div>
+      <div class="riflbl">Per quale appartamento?</div>
+      <div class="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" onclick="rifPickApt('${a.id}','${esc(a.nome).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.nome)}</button>`).join('')}</div>`;
+  }
+
+  const nCart=RIF_CART.size+RIF_CUSTOM.length;
+  const changeBtn = RIF_APTS.length>1 ? `<button class="rifchg" onclick="rifChangeApt()">Cambia</button>` : '';
+  const head=`<div class="rifhead"><span class="rifha">${ic('pin')}<b>${esc(RIF_APTNAME)}</b></span>${changeBtn}</div>`;
+  const searchbar=`<div class="rifsearch">${ic('search')}<input id="rifq" placeholder="Cerca un prodotto…" value="${esc(RIF_Q)}" oninput="rifFilter()"></div>`;
+
+  const cat=`<div id="rifcat">${CATALOG.map(g=>{
+    const rows=g.items.map(it=>{ const inC=rifInCart(it);
+      return `<button class="rifrow ${inC?'in':''}" data-name="${esc(rifNorm(it))}" onclick="rifToggle('${it.replace(/'/g,"\\'")}')">
+        <span class="rifdot" style="background:${g.color}"></span>
+        <span class="rifnm">${esc(it)}</span>
+        <span class="rifadd">${inC?ic('check'):ic('plus')}</span></button>`; }).join('');
+    return `<div class="rifgroup">
+      <div class="rifghd"><span class="rifdot" style="background:${g.color}"></span>${esc(g.cat)}</div>
+      <div class="rifrows">${rows}</div></div>`;
+  }).join('')}</div>`;
+
+  // prodotti custom già aggiunti (fuori catalogo)
+  const custom = RIF_CUSTOM.length ? `<div class="rifgroup"><div class="rifghd"><span class="rifdot" style="background:#9A9183"></span>Aggiunti da te</div>
+    <div class="rifrows">${RIF_CUSTOM.map(n=>`<button class="rifrow in" onclick="rifToggle('${n.replace(/'/g,"\\'")}')">
+      <span class="rifdot" style="background:#9A9183"></span><span class="rifnm">${esc(n)}</span><span class="rifadd">${ic('check')}</span></button>`).join('')}</div></div>` : '';
+
+  const custbox=`<div class="rifcustom">
+    <div class="riflbl2">${ic('box')}Non trovi qualcosa?</div>
+    <div class="rifcustrow"><input id="rifcust" placeholder="Scrivi il prodotto…" oninput="rifCustomType()">
+      <button class="rifaddbtn" onclick="rifCustomAdd()">${ic('plus')}Aggiungi</button></div>
+    <div id="rifsugg"></div></div>`;
+
+  const fab = nCart ? `<button class="riffab" onclick="toggleRifCart()">${ic('cart')}<span class="riffabn">${nCart}</span>Vedi carrello</button>` : '';
+  const drawer = RIF_CARTOPEN ? rifDrawer() : '';
+
+  return head+searchbar+cat+custom+custbox+`<div class="riffabsp"></div>`+fab+drawer;
+}
+
+function rifDrawer(){
+  const map={};
+  [...RIF_CART].forEach(n=>{ const c=rifCatOf(n); (map[c]=map[c]||[]).push(n); });
+  RIF_CUSTOM.forEach(n=>{ (map['Altro']=map['Altro']||[]).push(n); });
+  const cats=Object.keys(map);
+  const tot=RIF_CART.size+RIF_CUSTOM.length;
+  const groups=cats.map(c=>`<div class="rifdg"><div class="rifdgc">${esc(c)}</div>${map[c].map(n=>
+    `<div class="rifditem"><span class="rifdot" style="background:${rifColorOf(n)}"></span><span>${esc(n)}</span>
+      <button class="rifdel" onclick="rifToggle('${n.replace(/'/g,"\\'")}')">${ic('trash')}</button></div>`).join('')}</div>`).join('');
+  const urg=`<div class="rifurg"><div class="riflbl2">${ic('clock')}Tra quanto serve?</div>
+    <div class="rifurgseg">${RIF_URG_OPT.map(([k,a,b])=>`<button class="rifubtn ${RIF_URG===k?'on':''}" onclick="rifSetUrg('${k}')">
+      <b>${a}</b><span>${b}</span></button>`).join('')}</div></div>`;
+  return `<div class="rifback" onclick="toggleRifCart()"></div>
+    <div class="rifdrawer">
+      <div class="rifdhd"><span>${ic('cart')}Carrello · ${esc(RIF_APTNAME)}</span>
+        <button class="rifdx" onclick="toggleRifCart()">${ic('chevronD')}</button></div>
+      <div class="rifdbody">${groups}${urg}</div>
+      <button class="rifsend" onclick="rifSend()">${ic('check')}Invia ordine all'ufficio · ${tot} prodott${tot===1?'o':'i'}</button>
+    </div>`;
+}
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */
 function iCard(x,kind){
