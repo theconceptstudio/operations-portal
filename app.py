@@ -337,12 +337,14 @@ def rif_storico(token):
         a = apt.get(rel[0]) if rel else {}
         a = a or {}
         note = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
+        descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         out.append({
             'data': ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start'),
             'via': a.get('indirizzo') or a.get('nome') or '—',
             'stato': ((pr.get('Stato', {}) or {}).get('select') or {}).get('name'),
             'priority': ((pr.get('Priority', {}) or {}).get('select') or {}).get('name'),
-            'prodotti': note,
+            'prodotti': note,       # ordini creati dall'app: elenco prodotti
+            'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
         })
     resp = jsonify({'ok': True, 'storico': out})
     resp.headers['Cache-Control'] = 'no-store'

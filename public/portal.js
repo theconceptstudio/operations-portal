@@ -647,12 +647,14 @@ function viewStorico(){
   const cards=RIF_STORICO.map(o=>{
     const col=RIF_STATO_COL[o.stato]||'#9A9183';
     const data=o.data?dShort(o.data):'';
-    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'');
+    // ordini creati dall'app: elenco prodotti dal Note; ordini vecchi/manuali: titolo (Descrizione)
+    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
+    const detail=prod||(o.descrizione||'').trim();
     return `<div class="rifhist">
       <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato" style="color:${col};border-color:${col}">${esc(o.stato||'—')}</span></div>
       <div class="rifhistd">${ic('calendar')}${esc(data)}</div>
-      ${prod?`<div class="rifhistp">${esc(prod)}</div>`:''}
+      ${detail?`<div class="rifhistp">${esc(detail)}</div>`:''}
     </div>`;
   }).join('');
   return back+`<div class="rifhistlist">${cards}</div>`;
