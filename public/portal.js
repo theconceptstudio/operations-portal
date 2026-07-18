@@ -469,7 +469,16 @@ function rifToggle(name){
   else RIF_CART.add(name);
   render();
 }
-function rifToggleUrgent(name){ if(RIF_URGENT.has(name)) RIF_URGENT.delete(name); else RIF_URGENT.add(name); render(); }
+/* Re-render preservando lo scroll (pagina + corpo del carrello): evita il salto in alto
+   quando si tocca il fulmine o si cambia l'urgenza mentre si è dentro al carrello. */
+function rifKeepScroll(mut){
+  const body=document.querySelector('.rifdbody');
+  const dScroll=body?body.scrollTop:0, wScroll=window.scrollY;
+  mut(); render();
+  window.scrollTo(0,wScroll);
+  const nb=document.querySelector('.rifdbody'); if(nb) nb.scrollTop=dScroll;
+}
+function rifToggleUrgent(name){ rifKeepScroll(()=>{ if(RIF_URGENT.has(name)) RIF_URGENT.delete(name); else RIF_URGENT.add(name); }); }
 let RIF_Q='';
 function rifFilter(){ const el=document.getElementById('rifq'); RIF_Q=el?el.value:''; rifApplyFilter(); }
 function rifApplyFilter(){
@@ -507,7 +516,7 @@ function rifCustomAdd(){
   else if(!RIF_CUSTOM.some(x=>rifNorm(x)===rifNorm(v))) RIF_CUSTOM.push(v);
   render();
 }
-function rifSetUrg(u){ RIF_URG=u; render(); }
+function rifSetUrg(u){ rifKeepScroll(()=>{ RIF_URG=u; }); }
 function toggleRifCart(){ RIF_CARTOPEN=!RIF_CARTOPEN; render(); }
 async function rifSend(){
   const map={};

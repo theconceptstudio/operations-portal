@@ -396,13 +396,17 @@ def rifornimento(token):
         'Appartamento': {'relation': [{'id': _dash(apt_id)}]},
     }
 
-    # Corpo pagina: intestazione + checklist prodotti raggruppati per area
-    testa = (f'Richiesta rifornimenti da {op.get("nome") or "operatore"} · {oggi.strftime("%d/%m %H:%M")}'
-             f' · urgenza generale: {RIF_URG_LBL[urg]}')
-    if has_urg: testa += ' · ⚠️ contiene prodotti URGENTI (🔴)'
-    if nuovi: testa += ' · 🆕 contiene prodotti NUOVI non in lista'
+    # Corpo pagina: intestazione (callout + bullet leggibili) + checklist prodotti per area
+    meta = [f'Da: {op.get("nome") or "operatore"}',
+            f'Inviato: {oggi.strftime("%d/%m alle %H:%M")}',
+            f'Urgenza generale: {RIF_URG_LBL[urg]}']
+    if has_urg: meta.append('⚠️ Contiene prodotti urgenti (segnati 🔴 qui sotto)')
+    if nuovi: meta.append('🆕 Contiene prodotti nuovi non in lista (segnati 🆕 qui sotto)')
     children = [{'object': 'block', 'type': 'callout', 'callout': {
-        'icon': {'emoji': '🛒'}, 'rich_text': [{'text': {'content': testa}}]}}]
+        'icon': {'emoji': '🛒'}, 'rich_text': [{'text': {'content': 'Richiesta rifornimenti'}}]}}]
+    for m in meta:
+        children.append({'object': 'block', 'type': 'bulleted_list_item',
+                         'bulleted_list_item': {'rich_text': [{'text': {'content': m}}]}})
     for g in gruppi:
         items = [str(x).strip() for x in (g.get('items') or []) if str(x).strip()]
         if not items: continue
