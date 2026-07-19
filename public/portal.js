@@ -47,17 +47,17 @@ function setPView(v){ PVIEW=v; render(); }
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
 let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
     RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
-    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null;
+    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='';
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
   {cat:'Superfici / Cucina', color:'#3f8f5e', items:['Multisuperficie al limone','Antistatico per la polvere','Detergente vetri','Detergente sbiancante (cloro/candeggina)']},
-  {cat:'Pavimenti', color:'#8a6d3b', items:['Detersivo pavimenti legno','Detersivo pavimenti marmo','Detersivo pavimenti generale']},
-  {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne cucina','Paglietta metallo abrasiva']},
-  {cat:'Carta', color:'#9A9183', items:['Carta igienica']},
-  {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Disinfettante tessuti / antiodore']},
-  {cat:'Lavaggio', color:'#7A5AA8', items:['Sale lavastoviglie','Brillantante']},
-  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Capsule lavastoviglie','Capsule/detersivo lavatrice','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
+  {cat:'Pavimenti', color:'#8a6d3b', items:['Detersivo pavimenti legno','Detersivo pavimenti marmo','Detersivo pavimenti piastrelle / gres']},
+  {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne cucina','Spugne magiche (togli segni dai muri)','Paglietta metallo abrasiva','Frangia di ricambio mocio (classico)','Panno di ricambio mocio piatto']},
+  {cat:'Carta & sacchi', color:'#9A9183', items:['Carta igienica','Sacchi spazzatura grandi (neri)','Sacchi spazzatura medi (ospite)','Sacchi piccoli (cestini bagno)']},
+  {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Disinfettante tessuti / antiodore','Smacchiatore tessuti (spray antimacchia)']},
+  {cat:'Manutenzione cucina (staff)', color:'#7A5AA8', items:['Sale lavastoviglie','Brillantante']},
+  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Capsule lavastoviglie','Capsule/detersivo lavatrice','Canovacci bianchi (asciugamani cucina)','Panno microfibra bianco (per ospiti)','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
 ];
 function rifCatOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.cat:'Altro'; }
 function rifColorOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.color:'#9A9183'; }
@@ -138,7 +138,8 @@ function render(){
       <button class="tab ${TAB==='rifornimenti'?'on':''}" onclick="setTab('rifornimenti')">${ic('cart')}Rifornimenti${nCart?` <span class="n">${nCart}</span>`:''}</button>
     </div></div>
     <div class="content">${view}</div>`;
-  if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && RIF_Q) rifApplyFilter();
+  if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && RIF_APT && RIF_Q) rifApplyFilter();
+  if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
 }
 function setTab(t){ TAB=t; OPEN_CARDS.clear(); if(t==='rifornimenti') rifEnsureApts(); render(); }
@@ -461,7 +462,10 @@ async function rifEnsureApts(){
   }catch(_){ RIF_APTS=[]; }
   if(TAB==='rifornimenti') render();
 }
-function rifPickApt(id,via){ RIF_APT=id; RIF_APTVIA=via; render(); }
+function rifPickApt(id,via){ RIF_APT=id; RIF_APTVIA=via; RIF_APTQ=''; render(); }
+function rifAptSearch(){ const el=document.getElementById('rifaptq'); RIF_APTQ=el?el.value:''; rifAptApplyFilter(); }
+function rifAptApplyFilter(){ const q=rifNorm(RIF_APTQ||'');
+  document.querySelectorAll('#rifapts .rifaptbtn').forEach(b=>{ b.style.display=(!q||(b.dataset.v||'').includes(q))?'':'none'; }); }
 function rifChangeApt(){ RIF_APT=null; RIF_APTVIA=''; RIF_CARTOPEN=false; render(); }
 function rifInCart(name){ return RIF_CART.has(name)||RIF_CUSTOM.includes(name); }
 function rifToggle(name){
@@ -572,12 +576,16 @@ function viewRifornimenti(){
   // Cronologia
   if(RIF_VIEW==='storico') return viewStorico();
 
-  // Selettore appartamento (se più d'uno e non ancora scelto) — mostriamo la VIA
+  // Selettore appartamento (se più d'uno e non ancora scelto) — mostriamo la VIA.
+  // Con tanti appartamenti (30-40) compare anche una ricerca per via.
   if(!RIF_APT){
+    const aptSearch = RIF_APTS.length>6
+      ? `<div class="rifsearch">${ic('search')}<input id="rifaptq" placeholder="Cerca la via…" value="${esc(RIF_APTQ)}" oninput="rifAptSearch()"></div>` : '';
     return `<div class="rifintro">${ic('cart')}<div><b>Cosa manca in casa?</b><span>Scegli l'appartamento, poi aggiungi i prodotti al carrello.</span></div></div>
       <div class="rifbar"><span class="riflbl">Per quale appartamento?</span>
         <button class="rifchg" onclick="rifShowStorico()">${ic('history')}Cronologia</button></div>
-      <div class="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" onclick="rifPickApt('${a.id}','${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}</div>`;
+      ${aptSearch}
+      <div class="rifapts" id="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" data-v="${esc(rifNorm(a.via))}" onclick="rifPickApt('${a.id}','${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}</div>`;
   }
 
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
