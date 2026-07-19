@@ -33,6 +33,9 @@ const ICN = {
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>',
   box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   arrowUp:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  close:'<path d="M18 6 6 18M6 6l12 12"/>',
+  play:'<path d="M8 5.5v13l11-6.5z"/>',
+  download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/>',
   bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
   history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
 };
@@ -53,11 +56,11 @@ const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
   {cat:'Superfici / Cucina', color:'#3f8f5e', items:['Multisuperficie al limone','Antistatico per la polvere','Detergente vetri','Detergente sbiancante (cloro/candeggina)']},
   {cat:'Pavimenti', color:'#8a6d3b', items:['Detersivo pavimenti legno','Detersivo pavimenti marmo','Detersivo pavimenti piastrelle / gres']},
-  {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne cucina','Spugne magiche (togli segni dai muri)','Paglietta metallo abrasiva','Frangia di ricambio mocio (classico)','Panno di ricambio mocio piatto']},
+  {cat:'Panni & Spugne', color:'#c8792f', items:['Panni microfibra colorati','Panni microfibra vetri blu','Panni Swiffer','Garze Swiffer polvere','Spugne magiche (togli segni dai muri)','Paglietta metallo abrasiva','Frangia di ricambio mocio (classico)','Panno di ricambio mocio piatto']},
   {cat:'Carta & sacchi', color:'#9A9183', items:['Carta igienica','Sacchi spazzatura grandi (neri)','Sacchi spazzatura medi (ospite)','Sacchi piccoli (cestini bagno)']},
   {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Disinfettante tessuti / antiodore','Smacchiatore tessuti (spray antimacchia)']},
   {cat:'Manutenzione cucina (staff)', color:'#7A5AA8', items:['Sale lavastoviglie','Brillantante']},
-  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Capsule lavastoviglie','Capsule/detersivo lavatrice','Canovacci bianchi (asciugamani cucina)','Panno microfibra bianco (per ospiti)','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
+  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Spugne cucina','Capsule lavastoviglie','Capsule/detersivo lavatrice','Canovacci bianchi (asciugamani cucina)','Panno microfibra bianco (per ospiti)','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
 ];
 function rifCatOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.cat:'Altro'; }
 function rifColorOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.color:'#9A9183'; }
@@ -104,7 +107,7 @@ async function triggerSync(){
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
-  if(RIF_CARTOPEN) return;  // non ricostruire mentre l'operatore è nel carrello
+  if(RIF_CARTOPEN || LB.open) return;  // non ricostruire mentre è nel carrello o sfoglia gli allegati
   const ae=document.activeElement;  // né mentre sta digitando (ricerca / prodotto custom)
   if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
   _refreshing=true;
@@ -781,24 +784,95 @@ function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }
    su Notion. Si carica dal vivo (URL freschi) quando la card è aperta. */
 let ALLEG={};
 function normUp(list){ return (list||[]).map(x => typeof x==='string' ? {url:x, video:isVideo(x)} : x); }
-function allegThumbsHtml(list){
+/* Nome leggibile dell'allegato: quello di Notion, altrimenti dedotto dall'URL */
+function allegName(a,i){
+  let n=((a&&a.name)||'').trim();
+  if(!n){ try{ n=decodeURIComponent(String((a&&a.url)||'').split('?')[0].split('/').pop()||''); }catch(_){ n=''; } }
+  return n || `Allegato ${i+1}`;
+}
+function allegThumbsHtml(list,key){
   list=(list||[]).filter(a=>a&&a.url);
   if(!list.length) return '';
-  const thumbs=list.map(a=> a.video
-    ? `<a href="${esc(a.url)}" target="_blank" rel="noopener" class="thumb vid">${ic('film')}</a>`
-    : `<a href="${esc(a.url)}" target="_blank" rel="noopener" class="thumb" style="background-image:url('${esc(a.url)}')"></a>`).join('');
+  const thumbs=list.map((a,i)=>{
+    const nome=esc(allegName(a,i));
+    return a.video
+      ? `<button class="thumb vid" onclick="openLB('${key}',${i})" title="${nome}">${ic('play')}</button>`
+      : `<button class="thumb" onclick="openLB('${key}',${i})" title="${nome}" style="background-image:url('${esc(a.url)}')"></button>`;
+  }).join('');
   return `<div class="lbl">${ic('camera')}Allegati (${list.length}) · condivisi con l'ufficio</div><div class="thumbs">${thumbs}</div>`;
 }
 function allegatiBlock(key){
   const list = ALLEG[key] || normUp(UPLOADS[key]);
-  return `<div class="alleg" id="alleg-${key}">${allegThumbsHtml(list)}</div>`;
+  return `<div class="alleg" id="alleg-${key}">${allegThumbsHtml(list,key)}</div>`;
 }
 async function fetchAllegati(kind,id){
   const key=kind+':'+id;
   try{
     const r=await fetch(`${API}/allegati/${kind}/${id}`,{cache:'no-store'}); const j=await r.json();
-    if(j&&j.ok){ ALLEG[key]=j.allegati; const el=document.getElementById('alleg-'+key); if(el) el.innerHTML=allegThumbsHtml(j.allegati); }
+    if(j&&j.ok){ ALLEG[key]=j.allegati; const el=document.getElementById('alleg-'+key); if(el) el.innerHTML=allegThumbsHtml(j.allegati,key);
+      if(LB.open&&LB.key===key){ LB.list=lbList(key); paintLB(); } }
   }catch(_){}
+}
+
+/* ── Visualizzatore allegati (popup sfogliabile, senza aprire nuove schede) ──
+   Vive fuori da #app così i re-render non lo toccano: sfogliare è istantaneo. */
+let LB={key:null,list:[],idx:0,open:false};
+function lbList(key){ return (ALLEG[key]||normUp(UPLOADS[key])||[]).filter(a=>a&&a.url); }
+function openLB(key,idx){
+  LB.key=key; LB.list=lbList(key); LB.idx=idx||0;
+  if(!LB.list.length) return;
+  LB.open=true; document.addEventListener('keydown',lbKeyNav);
+  document.body.style.overflow='hidden';
+  paintLB();
+}
+function closeLB(){
+  LB.open=false; document.removeEventListener('keydown',lbKeyNav);
+  document.body.style.overflow='';
+  const el=document.getElementById('lbox'); if(el) el.remove();
+}
+function lbKeyNav(e){
+  if(e.key==='Escape') closeLB();
+  else if(e.key==='ArrowRight') lbGo(1);
+  else if(e.key==='ArrowLeft') lbGo(-1);
+}
+function lbGo(d){ const n=LB.list.length; if(!n) return; LB.idx=(LB.idx+d+n)%n; paintLB(); }
+function lbSet(i){ LB.idx=i; paintLB(); }
+function lbStageClick(e){ if(e.target.classList.contains('lbstage')) closeLB(); }
+let _lbX=null;
+function lbTS(e){ _lbX=e.changedTouches[0].clientX; }
+function lbTE(e){ if(_lbX==null) return; const dx=e.changedTouches[0].clientX-_lbX; _lbX=null;
+  if(Math.abs(dx)>45) lbGo(dx<0?1:-1); }
+/* precarica il precedente e il successivo: il cambio è immediato */
+function lbPreload(){ const n=LB.list.length; if(n<2) return;
+  [1,-1].forEach(d=>{ const a=LB.list[(LB.idx+d+n)%n];
+    if(a&&!a.video){ const im=new Image(); im.src=a.url; } }); }
+function paintLB(){
+  if(!LB.open) return;
+  let el=document.getElementById('lbox');
+  if(!el){
+    el=document.createElement('div'); el.id='lbox'; el.className='lbox';
+    el.addEventListener('touchstart',lbTS,{passive:true});
+    el.addEventListener('touchend',lbTE,{passive:true});
+    document.body.appendChild(el);
+  }
+  const a=LB.list[LB.idx]; if(!a){ closeLB(); return; }
+  const n=LB.list.length, nome=esc(allegName(a,LB.idx));
+  const media = a.video
+    ? `<video class="lbmedia" src="${esc(a.url)}" controls playsinline preload="metadata"></video>`
+    : `<img class="lbmedia" src="${esc(a.url)}" alt="${nome}">`;
+  const nav = n>1 ? `<button class="lbnav prev" onclick="lbGo(-1)" aria-label="Precedente">${ic('chevronL')}</button>
+      <button class="lbnav next" onclick="lbGo(1)" aria-label="Successivo">${ic('chevronR')}</button>` : '';
+  const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> x.video
+      ? `<button class="lbth vid ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('play')}</button>`
+      : `<button class="lbth ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}" style="background-image:url('${esc(x.url)}')"></button>`).join('')}</div>` : '';
+  el.innerHTML=`<div class="lbtop">
+      <div class="lbtitle"><b>${nome}</b>${n>1?`<span>${LB.idx+1} di ${n}</span>`:''}</div>
+      <div class="lbacts">
+        <a class="lbbtn" href="${esc(a.url)}" target="_blank" rel="noopener" title="Apri originale">${ic('download')}</a>
+        <button class="lbbtn" onclick="closeLB()" aria-label="Chiudi">${ic('close')}</button>
+      </div></div>
+    <div class="lbstage" onclick="lbStageClick(event)">${media}${nav}</div>${strip}`;
+  lbPreload();
 }
 
 /* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */

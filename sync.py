@@ -57,11 +57,11 @@ def n_query(db_id, filter_body=None):
     return out
 
 def title_of(prop):
-    a = (prop or {}).get('title', [])
-    return a[0]['plain_text'] if a else ''
+    # Notion spezza il testo in più segmenti (grassetto, link, a capo…): vanno uniti TUTTI,
+    # altrimenti si perde tutto quello che viene dopo il primo pezzo.
+    return ''.join(x.get('plain_text', '') for x in ((prop or {}).get('title') or []))
 def text_of(prop):
-    a = (prop or {}).get('rich_text', [])
-    return a[0]['plain_text'] if a else ''
+    return ''.join(x.get('plain_text', '') for x in ((prop or {}).get('rich_text') or []))
 def rel_first(prop):
     a = (prop or {}).get('relation', [])
     return a[0]['id'].replace('-', '') if a else None
