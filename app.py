@@ -73,10 +73,12 @@ def n_get(page_id):
     r.raise_for_status()
     return r.json()
 
-def n_create_page(parent_db, props, children=None):
+def n_create_page(parent_db, props, children=None, icon=None):
     body = {'parent': {'database_id': parent_db.replace('-', '')}, 'properties': props}
     if children:
         body['children'] = children
+    if icon:
+        body['icon'] = {'type': 'emoji', 'emoji': icon}
     r = _session.post('https://api.notion.com/v1/pages', headers=N_HEADERS, json=body, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -424,7 +426,7 @@ def rifornimento(token):
     children = children[:100]
 
     try:
-        page = n_create_page(DB_EXPENSES, props, children)
+        page = n_create_page(DB_EXPENSES, props, children, icon='🛒')
     except requests.HTTPError as e:
         body = getattr(e.response, 'text', '')[:300]
         return jsonify({'ok': False, 'error': f'{e} {body}'}), 500
