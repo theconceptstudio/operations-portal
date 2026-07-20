@@ -353,11 +353,10 @@ def rif_storico(token):
         note = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
-        consegna  = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
-        magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
+        consegna = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
+        luogo = ((pr.get('Luogo di consegna', {}) or {}).get('select') or {}).get('name')
         # fase del ciclo di vita, come la vede l'operatore
         if consegna:                               fase = 'consegnato'
-        elif magazzino:                            fase = 'magazzino'
         elif stato in ('Acquistato', 'Da pagare'): fase = 'ordinato'
         else:                                      fase = 'richiesto'
         aid = rel[0] if rel else None
@@ -369,11 +368,10 @@ def rif_storico(token):
             'prodotti': note,       # ordini creati dall'app: elenco prodotti
             'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
             'fase': fase,
-            'canale': ((pr.get('Canale', {}) or {}).get('select') or {}).get('name'),
-            'arrivo_magazzino': magazzino,
+            'luogo': luogo,                 # Appartamento (arriva dritto in casa) o Magazzino
             'data_consegna': consegna,
-            # finestra di consegna: si consegna quando c'è la pulizia in quella casa
-            'prossima_consegna': prossima.get(aid) if fase != 'consegnato' else None,
+            # finestra di consegna: dal magazzino si porta in casa quando c'è la pulizia
+            'prossima_consegna': (prossima.get(aid) if (fase != 'consegnato' and luogo != 'Appartamento') else None),
             'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
         })
     resp = jsonify({'ok': True, 'storico': out})

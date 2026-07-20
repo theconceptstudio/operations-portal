@@ -576,7 +576,6 @@ const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato
 const RIF_FASE={
   richiesto:  {lbl:'Richiesto',    col:'#9A9183'},
   ordinato:   {lbl:'Ordine fatto', col:'#3b6ea5'},
-  magazzino:  {lbl:'In magazzino', col:'#b5892e'},
   consegnato: {lbl:'Consegnato',   col:'#3f8f5e'},
 };
 
@@ -713,8 +712,13 @@ function viewStorico(){
     // riga date: richiesto / consegnato / finestra di consegna prevista
     let righeData=`${ic('calendar')}Richiesto il ${esc(data)}`;
     if(o.data_consegna) righeData+=` &nbsp;·&nbsp; Consegnato il ${esc(dShort(o.data_consegna))}`;
-    const attesa = (!o.data_consegna && o.prossima_consegna)
-      ? `<div class="rifhnext">${ic('truck')}Si consegna alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>` : '';
+    let attesa='';
+    if(!o.data_consegna){
+      if(o.luogo==='Appartamento')
+        attesa=`<div class="rifhnext">${ic('truck')}Arriva <b>direttamente in appartamento</b></div>`;
+      else if(o.prossima_consegna)
+        attesa=`<div class="rifhnext">${ic('truck')}In magazzino · si porta in casa alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>`;
+    }
     return `<div class="rifhist" data-h="${esc(hay)}">
       <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato" style="color:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
