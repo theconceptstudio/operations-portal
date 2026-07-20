@@ -354,11 +354,17 @@ def rif_storico(token):
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
         consegna = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
+        magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
+        acquisto = ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start')
         luogo = ((pr.get('Luogo di consegna', {}) or {}).get('select') or {}).get('name')
+        ordinato = stato in ('Acquistato', 'Da pagare')
         # fase del ciclo di vita, come la vede l'operatore
-        if consegna:                               fase = 'consegnato'
-        elif stato in ('Acquistato', 'Da pagare'): fase = 'ordinato'
-        else:                                      fase = 'richiesto'
+        if consegna:      fase = 'consegnato'
+        elif magazzino:   fase = 'magazzino'
+        elif ordinato:    fase = 'ordinato'
+        else:             fase = 'richiesto'
+        # la richiesta e' la creazione della pagina: non viene mai sovrascritta
+        richiesto_il = (p.get('created_time') or '')[:10] or None
         aid = rel[0] if rel else None
         out.append({
             'data': ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start'),
@@ -369,6 +375,10 @@ def rif_storico(token):
             'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
             'fase': fase,
             'luogo': luogo,                 # Appartamento (arriva dritto in casa) o Magazzino
+            # i quattro momenti del percorso del pacco
+            'richiesto_il': richiesto_il,
+            'ordinato_il': acquisto if ordinato else None,
+            'arrivo_magazzino': magazzino,
             'data_consegna': consegna,
             # finestra di consegna: dal magazzino si porta in casa quando c'è la pulizia
             'prossima_consegna': (prossima.get(aid) if (fase != 'consegnato' and luogo != 'Appartamento') else None),

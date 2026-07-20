@@ -630,3 +630,16 @@ video.lbmedia{width:100%}
   font-family:var(--light);font-size:12px;color:var(--greige-text);line-height:1.45}
 .rifhnext .ic{width:15px;height:15px;color:var(--greige);flex:none;margin-top:1px}
 .rifhnext b{font-family:var(--body);color:var(--ink)}
+
+/* Percorso del pacco (timeline compatta) */
+.rifhistp.nolinea{border-top:none;padding-top:0;margin-top:6px}
+.rift{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+.riftp{display:flex;align-items:center;gap:9px;padding:5px 0;font-family:var(--light);
+  font-size:12.5px;color:var(--greige-soft)}
+.riftdot{width:9px;height:9px;border-radius:50%;background:var(--line-2);flex:none;
+  box-shadow:0 0 0 3px #fff}
+.riftlbl{flex:1}
+.riftd{font-family:var(--body);font-size:12px;color:var(--greige-soft)}
+.riftp.ok{color:var(--ink)}
+.riftp.ok .riftdot{background:var(--p-l)}
+.riftp.ok .riftd{color:var(--ink)}

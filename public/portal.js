@@ -576,8 +576,27 @@ const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato
 const RIF_FASE={
   richiesto:  {lbl:'Richiesto',    col:'#9A9183'},
   ordinato:   {lbl:'Ordine fatto', col:'#3b6ea5'},
+  magazzino:  {lbl:'In magazzino', col:'#b5892e'},
   consegnato: {lbl:'Consegnato',   col:'#3f8f5e'},
 };
+/* Percorso del pacco: i quattro momenti, con la data quando c'è */
+function rifTimeline(o){
+  const inCasa = o.luogo==='Appartamento';
+  // La consegna in casa la gestisce la logistica: qui basta sapere dove è arrivato il pacco.
+  const passi=[
+    {k:'richiesto', lbl:'Richiesto',    d:o.richiesto_il},
+    {k:'ordinato',  lbl:'Ordine fatto', d:o.ordinato_il},
+    inCasa ? {k:'consegnato', lbl:'Arrivato in appartamento', d:o.data_consegna}
+           : {k:'magazzino',  lbl:'Arrivato in magazzino',    d:o.arrivo_magazzino},
+  ];
+  return `<div class="rift">${passi.map(p=>{
+    const fatto=!!p.d;
+    return `<div class="riftp ${fatto?'ok':''}">
+      <span class="riftdot"></span>
+      <span class="riftlbl">${esc(p.lbl)}</span>
+      <span class="riftd">${fatto?esc(dShort(p.d)):'—'}</span></div>`;
+  }).join('')}</div>`;
+}
 
 function viewRifornimenti(){
   if(RIF_APTS===null) return `<div class="empty-state">${ic('cart')}<div class="t">Carico…</div></div>`;
@@ -709,21 +728,18 @@ function viewStorico(){
       <div class="thumbs">${alleg.map((a,j)=>a.video
         ? `<button class="thumb vid" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
         : `<button class="thumb" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
-    // riga date: richiesto / consegnato / finestra di consegna prevista
-    let righeData=`${ic('calendar')}Richiesto il ${esc(data)}`;
-    if(o.data_consegna) righeData+=` &nbsp;·&nbsp; Consegnato il ${esc(dShort(o.data_consegna))}`;
     let attesa='';
     if(!o.data_consegna){
       if(o.luogo==='Appartamento')
-        attesa=`<div class="rifhnext">${ic('truck')}Arriva <b>direttamente in appartamento</b></div>`;
+        attesa=`<div class="rifhnext">${ic('truck')}Arriva <b>direttamente in appartamento</b> · guarda in cassetta postale</div>`;
       else if(o.prossima_consegna)
-        attesa=`<div class="rifhnext">${ic('truck')}In magazzino · si porta in casa alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>`;
+        attesa=`<div class="rifhnext">${ic('truck')}Dal magazzino si porta in casa alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>`;
     }
     return `<div class="rifhist" data-h="${esc(hay)}">
       <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato" style="color:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
-      <div class="rifhistd">${righeData}</div>
-      ${detail?`<div class="rifhistp">${esc(detail)}</div>`:''}
+      ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
+      ${rifTimeline(o)}
       ${thumbs}${attesa}
     </div>`;
   }).join('');
