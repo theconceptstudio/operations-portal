@@ -34,6 +34,7 @@ const ICN = {
   box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   arrowUp:'<path d="M12 19V5M6 11l6-6 6 6"/>',
   close:'<path d="M18 6 6 18M6 6l12 12"/>',
+  truck:'<path d="M3 16V6h11v10"/><path d="M14 9h4l3 3.5V16h-7"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/>',
   play:'<path d="M8 5.5v13l11-6.5z"/>',
   download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/>',
   bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
@@ -571,6 +572,13 @@ function histApplyFilter(){
 
 const RIF_URG_OPT=[['1w','~1 settimana','Urgente'],['2w','~2 settimane','Normale'],['4w','~4 sett. o più','Con calma']];
 const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato':'#3f8f5e','Reso':'#8a6d3b'};
+/* Ciclo di vita di un ordine, come lo vede l'operatore */
+const RIF_FASE={
+  richiesto:  {lbl:'Richiesto',    col:'#9A9183'},
+  ordinato:   {lbl:'Ordine fatto', col:'#3b6ea5'},
+  magazzino:  {lbl:'In magazzino', col:'#b5892e'},
+  consegnato: {lbl:'Consegnato',   col:'#3f8f5e'},
+};
 
 function viewRifornimenti(){
   if(RIF_APTS===null) return `<div class="empty-state">${ic('cart')}<div class="t">Carico…</div></div>`;
@@ -687,18 +695,32 @@ function viewStorico(){
 
   let list=RIF_STORICO.slice();
   if(RIF_HAPT) list=list.filter(o=>o.via===RIF_HAPT);
-  const cards=list.map(o=>{
-    const col=RIF_STATO_COL[o.stato]||'#9A9183';
+  const cards=list.map((o,i)=>{
+    const f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
     const data=o.data?dShort(o.data):'';
     // ordini creati dall'app: elenco prodotti dal Note; ordini vecchi/manuali: titolo (Descrizione)
     const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
     const detail=prod||(o.descrizione||'').trim();
-    const hay=rifNorm(`${o.via} ${detail} ${o.stato||''}`);
+    const hay=rifNorm(`${o.via} ${detail} ${o.stato||''} ${f.lbl}`);
+    // ricevuta / foto prodotti caricate dall'ufficio: sfogliabili come gli altri allegati
+    const key='ord:'+i;
+    const alleg=(o.allegati||[]).filter(a=>a&&a.url);
+    if(alleg.length) ALLEG[key]=alleg;
+    const thumbs=alleg.length?`<div class="rifhdoc"><div class="rifhdoclbl">${ic('camera')}Ricevuta / foto (${alleg.length})</div>
+      <div class="thumbs">${alleg.map((a,j)=>a.video
+        ? `<button class="thumb vid" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
+        : `<button class="thumb" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
+    // riga date: richiesto / consegnato / finestra di consegna prevista
+    let righeData=`${ic('calendar')}Richiesto il ${esc(data)}`;
+    if(o.data_consegna) righeData+=` &nbsp;·&nbsp; Consegnato il ${esc(dShort(o.data_consegna))}`;
+    const attesa = (!o.data_consegna && o.prossima_consegna)
+      ? `<div class="rifhnext">${ic('truck')}Si consegna alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>` : '';
     return `<div class="rifhist" data-h="${esc(hay)}">
       <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
-        <span class="rifhstato" style="color:${col};border-color:${col}">${esc(o.stato||'—')}</span></div>
-      <div class="rifhistd">${ic('calendar')}${esc(data)}</div>
+        <span class="rifhstato" style="color:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
+      <div class="rifhistd">${righeData}</div>
       ${detail?`<div class="rifhistp">${esc(detail)}</div>`:''}
+      ${thumbs}${attesa}
     </div>`;
   }).join('');
   const empty=`<div id="rifhempty" class="empty-state" style="display:none">${ic('search')}<div class="t">Nessun risultato</div>Prova con un'altra parola.</div>`;

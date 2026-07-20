@@ -100,11 +100,11 @@ def _now_rome():
     except Exception:
         return datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # fallback ora legale IT
 
-def _allegati_of(page):
-    """Lista file di 'Allegati': [{name, url, video}]. Gestisce sia i file esterni (Supabase,
+def _allegati_of(page, prop='Allegati'):
+    """Lista file di una proprieta' file: [{name, url, video}]. Gestisce sia i file esterni (Supabase,
     caricati dall'operatore) sia quelli caricati su Notion dall'ufficio (url firmato che rinfreschiamo
     ad ogni lettura)."""
-    files = (page.get('properties', {}).get('Allegati', {}) or {}).get('files', []) or []
+    files = (page.get('properties', {}).get(prop, {}) or {}).get('files', []) or []
     out = []
     for f in files:
         url = (f.get('external') or f.get('file') or {}).get('url', '')
@@ -330,6 +330,18 @@ def rif_storico(token):
             'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40})
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+    # Prossima pulizia per appartamento = quando si può consegnare: la roba si porta in casa
+    # solo quando c'è il check-out con pulizia (l'operatore è già sul posto, casa vuota).
+    oggi_iso = datetime.date.today().isoformat()
+    prossima = {}
+    for row in sb_get('op_pulizie', {'operatore_notion_id': f'eq.{op["notion_id"]}',
+                                     'data': f'gte.{oggi_iso}',
+                                     'select': 'appartamento_notion_id,data', 'order': 'data.asc'}):
+        aid = row.get('appartamento_notion_id')
+        if aid and aid not in prossima:
+            prossima[aid] = row.get('data')
+
     out = []
     for p in results:
         pr = p.get('properties', {})
@@ -340,13 +352,29 @@ def rif_storico(token):
         a = a or {}
         note = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
+        stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
+        consegna  = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
+        magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
+        # fase del ciclo di vita, come la vede l'operatore
+        if consegna:                               fase = 'consegnato'
+        elif magazzino:                            fase = 'magazzino'
+        elif stato in ('Acquistato', 'Da pagare'): fase = 'ordinato'
+        else:                                      fase = 'richiesto'
+        aid = rel[0] if rel else None
         out.append({
             'data': ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start'),
             'via': a.get('indirizzo') or a.get('nome') or '—',
-            'stato': ((pr.get('Stato', {}) or {}).get('select') or {}).get('name'),
+            'stato': stato,
             'priority': ((pr.get('Priority', {}) or {}).get('select') or {}).get('name'),
             'prodotti': note,       # ordini creati dall'app: elenco prodotti
             'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
+            'fase': fase,
+            'canale': ((pr.get('Canale', {}) or {}).get('select') or {}).get('name'),
+            'arrivo_magazzino': magazzino,
+            'data_consegna': consegna,
+            # finestra di consegna: si consegna quando c'è la pulizia in quella casa
+            'prossima_consegna': prossima.get(aid) if fase != 'consegnato' else None,
+            'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
         })
     resp = jsonify({'ok': True, 'storico': out})
     resp.headers['Cache-Control'] = 'no-store'
