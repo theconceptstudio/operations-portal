@@ -190,6 +190,90 @@ async function reschedMulti(){
   render(); toast(ok?`${ok} richieste inviate all'ufficio`:'Non riuscito, riprova');
 }
 function toggleSel(kind,id){ const k=kind+':'+id; if(SELECTED.has(k)) SELECTED.delete(k); else SELECTED.add(k); render(); }
+
+/* ── Riepilogo su WhatsApp degli interventi selezionati, allegati inclusi ──
+   Il link wa.me porta solo testo: per mandare anche le foto usiamo la condivisione
+   nativa del telefono (che ha WhatsApp tra le opzioni). Dove non c'è, ripieghiamo
+   su testo + download degli allegati, così restano comunque inoltrabili a mano. */
+function selItems(){
+  return [...SELECTED].map(k=>{ const i=k.indexOf(':'), kind=k.slice(0,i), id=k.slice(i+1);
+    const arr=kind==='issue'?DATA.issues:DATA.tasks;
+    const it=(arr||[]).find(x=>x.notion_id===id);
+    return it?Object.assign({},it,{_kind:kind,_key:k}):null; }).filter(Boolean);
+}
+function waTestoInterventi(items){
+  const out=[`🔧 Interventi da fare · ${items.length}`,''];
+  items.forEach((x,n)=>{
+    const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
+    const via=x.indirizzo||x.appartamento||''; const d=dateOf(x);
+    out.push(`${n+1}) ${t}`);
+    if(via) out.push(`📍 ${via}`);
+    if(x.appartamento&&x.appartamento!==via) out.push(`🏠 ${x.appartamento}`);
+    if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
+    if(d) out.push(`📅 ${dLong(d)}`);
+    const istr=(x.istruzioni||'').trim(); if(istr) out.push(`📝 ${istr}`);
+    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`📎 ${na} allegat${na===1?'o':'i'}`);
+    out.push('');
+  });
+  return out.join('\n').trim();
+}
+function safeName(s){ return (s||'').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60); }
+async function raccogliAllegati(items){
+  const files=[];
+  for(const x of items){
+    let list=ALLEG[x._key];
+    if(!list){
+      try{ const r=await fetch(`${API}/allegati/${x._kind}/${x.notion_id}`,{cache:'no-store'});
+        const j=await r.json(); if(j&&j.ok){ ALLEG[x._key]=j.allegati; list=j.allegati; } }catch(_){}
+    }
+    list=(list||[]).filter(a=>a&&a.url);
+    const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
+    const via=x.indirizzo||x.appartamento||'';
+    for(let i=0;i<list.length;i++){
+      const a=list[i];
+      const est=((allegName(a,i).split('.').pop())||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,4)||'jpg';
+      // il file porta il nome dell'intervento: chi lo riceve capisce a cosa si riferisce
+      const nome=safeName(`${via} - ${t}`)+(list.length>1?` (${i+1})`:'')+'.'+est;
+      try{
+        const r=await fetch(`${API}/file?u=${encodeURIComponent(a.url)}&n=${encodeURIComponent(nome)}`);
+        if(!r.ok) continue;
+        const b=await r.blob();
+        files.push(new File([b],nome,{type:b.type||'application/octet-stream'}));
+      }catch(_){}
+    }
+  }
+  return files;
+}
+function scaricaBlobs(files){
+  files.forEach((f,i)=>setTimeout(()=>{
+    const url=URL.createObjectURL(f), a=document.createElement('a');
+    a.href=url; a.download=f.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }, i*400));
+}
+let _waBusy=false;
+async function inviaWaSelezione(){
+  if(_waBusy) return;
+  const items=selItems();
+  if(!items.length){ toast('Seleziona prima gli interventi'); return; }
+  _waBusy=true; toast('Preparo il riepilogo…');
+  let files=[];
+  try{ files=await raccogliAllegati(items); }catch(_){}
+  const testo=waTestoInterventi(items);   // dopo la raccolta: così conta gli allegati
+  _waBusy=false;
+  // 1) telefono: pannello di condivisione nativo, con testo E allegati insieme
+  if(files.length && navigator.canShare && navigator.canShare({files})){
+    try{
+      await navigator.share({text:testo, files});
+      SELMODE=false; SELECTED=new Set(); render();
+      return;
+    }catch(e){ if(e && e.name==='AbortError'){ return; } }
+  }
+  // 2) altrove: testo su WhatsApp, allegati scaricati per essere inoltrati
+  window.open('https://wa.me/?text='+encodeURIComponent(testo),'_blank','noopener');
+  if(files.length){ scaricaBlobs(files); toast(`Testo su WhatsApp · ${files.length} allegati scaricati`); }
+  else toast('Riepilogo pronto su WhatsApp');
+}
 async function confermaMulti(){
   const keys=[...SELECTED]; if(!keys.length) return;
   SELMODE=false; SELECTED=new Set();
@@ -262,6 +346,7 @@ function viewDaFare(){
   const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
     <div class="selacts">
       <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
+      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()" title="Manda il riepilogo e le foto su WhatsApp">${ic('message')}Invia su WhatsApp</button>
       <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
       <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
     </div></div>` : '';

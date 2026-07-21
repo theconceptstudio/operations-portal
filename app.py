@@ -234,6 +234,33 @@ def allegati(token, kind, item_id):
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'allegati': _allegati_of(page)})
 
+# host da cui accettiamo di riscaricare un allegato (Notion firma gli URL su S3, Supabase Storage)
+_FILE_HOSTS = ('.notion.so', '.notion-static.com', '.amazonaws.com', '.supabase.co')
+
+@app.route('/api/o/<token>/file')
+def file_proxy(token):
+    """Riscarica un allegato passando dal nostro dominio. Serve perché gli URL firmati di Notion
+    non sono leggibili via fetch dal browser (niente CORS): così l'app può allegarli a una
+    condivisione WhatsApp o farli scaricare con un nome sensato."""
+    from urllib.parse import urlparse
+    from flask import Response
+    op = operatore_by_token(token)
+    if not op: return ('', 404)
+    u = request.args.get('u', '')
+    nome = (request.args.get('n') or 'allegato')[:120].replace('"', '').replace('\\', '')
+    host = (urlparse(u).hostname or '').lower()
+    if not (u.startswith('https://') and any(host == d.lstrip('.') or host.endswith(d) for d in _FILE_HOSTS)):
+        return ('host non consentito', 403)
+    try:
+        r = _session.get(u, timeout=60, stream=True)
+    except Exception:
+        return ('', 502)
+    if not r.ok: return ('', 502)
+    return Response(r.iter_content(64 * 1024),
+                    content_type=r.headers.get('Content-Type', 'application/octet-stream'),
+                    headers={'Content-Disposition': f'attachment; filename="{nome}"',
+                             'Cache-Control': 'no-store'})
+
 _LAST_SYNC = {'ts': 0.0}
 @app.route('/api/o/<token>/refresh')
 def refresh(token):
