@@ -251,29 +251,51 @@ function scaricaBlobs(files){
     setTimeout(()=>URL.revokeObjectURL(url),5000);
   }, i*400));
 }
-let _waBusy=false;
-async function inviaWaSelezione(){
+/* Solo testo: parte subito, funziona ovunque. Il link di WhatsApp non puo' portare file. */
+function inviaWaSelezione(){
+  const items=selItems();
+  if(!items.length){ toast('Seleziona prima gli interventi'); return; }
+  window.open('https://wa.me/?text='+encodeURIComponent(waTestoInterventi(items)),'_blank','noopener');
+}
+
+/* Allegati in due tempi: prima li prepariamo, poi l'utente tocca "Condividi".
+   Su iPhone la condivisione nativa vale solo se parte NELL'ISTANTE del tocco:
+   se la lanciassimo dopo il download, iOS la blocca. Per questo servono due passaggi. */
+let WA_FILES=[], _waBusy=false;
+async function preparaAllegati(){
   if(_waBusy) return;
   const items=selItems();
   if(!items.length){ toast('Seleziona prima gli interventi'); return; }
-  _waBusy=true; toast('Preparo il riepilogo…');
+  _waBusy=true; toast('Preparo gli allegati…');
   let files=[];
   try{ files=await raccogliAllegati(items); }catch(_){}
-  const testo=waTestoInterventi(items);   // dopo la raccolta: così conta gli allegati
   _waBusy=false;
-  // 1) telefono: pannello di condivisione nativo, con testo E allegati insieme
-  if(files.length && navigator.canShare && navigator.canShare({files})){
-    try{
-      await navigator.share({text:testo, files});
-      SELMODE=false; SELECTED=new Set(); render();
-      return;
-    }catch(e){ if(e && e.name==='AbortError'){ return; } }
-  }
-  // 2) altrove: testo su WhatsApp, allegati scaricati per essere inoltrati
-  window.open('https://wa.me/?text='+encodeURIComponent(testo),'_blank','noopener');
-  if(files.length){ scaricaBlobs(files); toast(`Testo su WhatsApp · ${files.length} allegati scaricati`); }
-  else toast('Riepilogo pronto su WhatsApp');
+  if(!files.length){ toast('Nessun allegato in questi interventi'); return; }
+  WA_FILES=files; mostraSheetAllegati();
 }
+function chiudiSheet(){ const el=document.getElementById('washeet'); if(el) el.remove(); }
+function mostraSheetAllegati(){
+  chiudiSheet();
+  const puo = !!(navigator.canShare && navigator.canShare({files:WA_FILES}));
+  const el=document.createElement('div'); el.id='washeet'; el.className='washeet';
+  el.innerHTML=`<div class="wsback" onclick="chiudiSheet()"></div>
+    <div class="wscard">
+      <div class="wstitle">${WA_FILES.length} allegat${WA_FILES.length===1?'o':'i'} pront${WA_FILES.length===1?'o':'i'}</div>
+      <div class="wssub">Ogni file ha il nome dell'intervento a cui appartiene.</div>
+      <div class="wslist">${WA_FILES.map(f=>`<div class="wsf">${ic('camera')}<span>${esc(f.name)}</span></div>`).join('')}</div>
+      ${puo?`<button class="wsbtn wa" onclick="condividiAllegati()">${ic('message')}Condividi (WhatsApp, Mail…)</button>`:''}
+      <button class="wsbtn" onclick="scaricaAllegatiPronti()">${ic('download')}Scarica tutti</button>
+      <button class="wsbtn ghost" onclick="chiudiSheet()">Annulla</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+async function condividiAllegati(){
+  // chiamata direttamente dal tocco: cosi' iOS la accetta
+  try{ await navigator.share({files:WA_FILES, text:waTestoInterventi(selItems())}); chiudiSheet(); }
+  catch(e){ if(!(e&&e.name==='AbortError')) toast('Condivisione non riuscita, prova a scaricarli'); }
+}
+function scaricaAllegatiPronti(){ scaricaBlobs(WA_FILES); chiudiSheet();
+  toast(`${WA_FILES.length} allegati scaricati`); }
 async function confermaMulti(){
   const keys=[...SELECTED]; if(!keys.length) return;
   SELMODE=false; SELECTED=new Set();
@@ -346,7 +368,8 @@ function viewDaFare(){
   const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
     <div class="selacts">
       <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
-      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()" title="Manda il riepilogo e le foto su WhatsApp">${ic('message')}Invia su WhatsApp</button>
+      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()" title="Manda il riepilogo testuale su WhatsApp">${ic('message')}Invia su WhatsApp</button>
+      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()" title="Prepara le foto degli interventi selezionati">${ic('camera')}Allegati</button>
       <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
       <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
     </div></div>` : '';

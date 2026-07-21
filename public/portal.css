@@ -650,3 +650,23 @@ video.lbmedia{width:100%}
   white-space:nowrap}
 .selwa .ic{width:16px;height:16px}
 .selwa:disabled{opacity:.4;cursor:default}
+
+/* Pannello allegati pronti (condividi / scarica) */
+.washeet{position:fixed;inset:0;z-index:55;display:flex;align-items:flex-end;justify-content:center}
+.wsback{position:absolute;inset:0;background:rgba(43,22,15,.38)}
+.wscard{position:relative;background:var(--cream);border-radius:20px 20px 0 0;width:100%;max-width:520px;
+  padding:20px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(43,22,15,.24);
+  animation:rfPop .28s cubic-bezier(.2,.9,.3,1.2);max-height:86vh;overflow-y:auto}
+.wstitle{font-family:var(--disp);font-weight:200;font-size:21px;line-height:1.15}
+.wssub{font-family:var(--light);font-size:12.5px;color:var(--greige-text);margin:5px 0 12px}
+.wslist{max-height:34vh;overflow-y:auto;margin-bottom:14px}
+.wsf{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);
+  font-family:var(--light);font-size:12.5px;color:var(--ink)}
+.wsf .ic{width:14px;height:14px;color:var(--greige);flex:none}
+.wsf span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-bottom:9px;
+  background:var(--ink);color:var(--cream);border:none;border-radius:13px;padding:15px;
+  font-family:var(--body);font-size:15px;cursor:pointer}
+.wsbtn .ic{width:18px;height:18px}
+.wsbtn.wa{background:#25D366;color:#fff}
+.wsbtn.ghost{background:none;color:var(--greige-text);border:1px solid var(--line-2);font-size:14px;padding:12px}
