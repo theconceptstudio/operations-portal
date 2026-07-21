@@ -670,3 +670,12 @@ video.lbmedia{width:100%}
 .wsbtn .ic{width:18px;height:18px}
 .wsbtn.wa{background:#25D366;color:#fff}
 .wsbtn.ghost{background:none;color:var(--greige-text);border:1px solid var(--line-2);font-size:14px;padding:12px}
+
+/* Barra di avanzamento preparazione allegati */
+.waprog{position:fixed;inset:0;z-index:56;background:rgba(43,22,15,.34);display:flex;
+  align-items:center;justify-content:center;padding:24px}
+.wpcard{background:var(--cream);border-radius:16px;padding:22px 24px;width:100%;max-width:340px;
+  box-shadow:0 14px 40px rgba(43,22,15,.26)}
+.wptxt{font-family:var(--body);font-size:14px;color:var(--ink);margin-bottom:12px;text-align:center}
+.wpbar{height:6px;border-radius:999px;background:var(--line-2);overflow:hidden}
+.wpfill{height:100%;width:8%;background:var(--p-l);border-radius:999px;transition:width .25s ease}

@@ -201,49 +201,72 @@ function selItems(){
     const it=(arr||[]).find(x=>x.notion_id===id);
     return it?Object.assign({},it,{_kind:kind,_key:k}):null; }).filter(Boolean);
 }
+/* Testo per WhatsApp: gli asterischi diventano grassetto, così il manutentore
+   distingue a colpo d'occhio il titolo e l'indirizzo. Niente nome appartamento:
+   in cantiere serve la via, non "The Maison". */
 function waTestoInterventi(items){
-  const out=[`🔧 Interventi da fare · ${items.length}`,''];
+  const out=[`*🔧 INTERVENTI DA FARE · ${items.length}*`,''];
   items.forEach((x,n)=>{
     const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
     const via=x.indirizzo||x.appartamento||''; const d=dateOf(x);
-    out.push(`${n+1}) ${t}`);
-    if(via) out.push(`📍 ${via}`);
-    if(x.appartamento&&x.appartamento!==via) out.push(`🏠 ${x.appartamento}`);
-    if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
+    out.push(`*${n+1}) ${t.toUpperCase()}*`);
+    if(via) out.push(`📍 *${via}*`);
     if(d) out.push(`📅 ${dLong(d)}`);
+    if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
     const istr=(x.istruzioni||'').trim(); if(istr) out.push(`📝 ${istr}`);
-    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`📎 ${na} allegat${na===1?'o':'i'}`);
-    out.push('');
+    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`📎 ${na} foto in arrivo`);
+    out.push('———————');
   });
-  return out.join('\n').trim();
+  return out.join('\n').replace(/———————$/,'').trim();
 }
 function safeName(s){ return (s||'').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60); }
-async function raccogliAllegati(items){
-  const files=[];
+async function raccogliAllegati(items,onProg){
+  // 1) leggo le liste allegati degli interventi scelti
   for(const x of items){
-    let list=ALLEG[x._key];
-    if(!list){
-      try{ const r=await fetch(`${API}/allegati/${x._kind}/${x.notion_id}`,{cache:'no-store'});
-        const j=await r.json(); if(j&&j.ok){ ALLEG[x._key]=j.allegati; list=j.allegati; } }catch(_){}
-    }
-    list=(list||[]).filter(a=>a&&a.url);
+    if(ALLEG[x._key]) continue;
+    try{ const r=await fetch(`${API}/allegati/${x._kind}/${x.notion_id}`,{cache:'no-store'});
+      const j=await r.json(); if(j&&j.ok) ALLEG[x._key]=j.allegati; }catch(_){}
+  }
+  // 2) elenco piatto, così so quanti file sono e posso mostrare l'avanzamento
+  const da=[];
+  for(const x of items){
+    const list=(ALLEG[x._key]||[]).filter(a=>a&&a.url);
     const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
     const via=x.indirizzo||x.appartamento||'';
-    for(let i=0;i<list.length;i++){
-      const a=list[i];
-      const est=((allegName(a,i).split('.').pop())||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,4)||'jpg';
-      // il file porta il nome dell'intervento: chi lo riceve capisce a cosa si riferisce
-      const nome=safeName(`${via} - ${t}`)+(list.length>1?` (${i+1})`:'')+'.'+est;
-      try{
-        const r=await fetch(`${API}/file?u=${encodeURIComponent(a.url)}&n=${encodeURIComponent(nome)}`);
-        if(!r.ok) continue;
-        const b=await r.blob();
-        files.push(new File([b],nome,{type:b.type||'application/octet-stream'}));
-      }catch(_){}
-    }
+    list.forEach((a,i)=>da.push({a,i,n:list.length,t,via}));
+  }
+  if(onProg) onProg(0,da.length);
+  // 3) scarico uno a uno, aggiornando la barra
+  const files=[];
+  for(let k=0;k<da.length;k++){
+    const {a,i,n,t,via}=da[k];
+    const est=((allegName(a,i).split('.').pop())||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,4)||'jpg';
+    // il file porta il nome dell'intervento: chi lo riceve capisce a cosa si riferisce
+    const nome=safeName(`${via} - ${t}`)+(n>1?` (${i+1})`:'')+'.'+est;
+    try{
+      const r=await fetch(`${API}/file?u=${encodeURIComponent(a.url)}&n=${encodeURIComponent(nome)}`);
+      if(r.ok){ const b=await r.blob(); files.push(new File([b],nome,{type:b.type||'application/octet-stream'})); }
+    }catch(_){}
+    if(onProg) onProg(k+1,da.length);
   }
   return files;
 }
+
+/* Barra di avanzamento: scaricare 7 interventi di foto richiede secondi,
+   e senza un segnale visibile sembra che non stia succedendo nulla. */
+function progOpen(){
+  progClose();
+  const el=document.createElement('div'); el.id='waprog'; el.className='waprog';
+  el.innerHTML=`<div class="wpcard"><div class="wptxt" id="wptxt">Preparo gli allegati…</div>
+    <div class="wpbar"><div class="wpfill" id="wpfill"></div></div></div>`;
+  document.body.appendChild(el);
+}
+function progSet(n,m){
+  const t=document.getElementById('wptxt'), f=document.getElementById('wpfill');
+  if(t) t.textContent = m ? `Scarico gli allegati… ${n} di ${m}` : 'Cerco gli allegati…';
+  if(f) f.style.width = (m? Math.round(100*n/m) : 8)+'%';
+}
+function progClose(){ const el=document.getElementById('waprog'); if(el) el.remove(); }
 function scaricaBlobs(files){
   files.forEach((f,i)=>setTimeout(()=>{
     const url=URL.createObjectURL(f), a=document.createElement('a');
@@ -266,10 +289,10 @@ async function preparaAllegati(){
   if(_waBusy) return;
   const items=selItems();
   if(!items.length){ toast('Seleziona prima gli interventi'); return; }
-  _waBusy=true; toast('Preparo gli allegati…');
+  _waBusy=true; progOpen(); progSet(0,0);
   let files=[];
-  try{ files=await raccogliAllegati(items); }catch(_){}
-  _waBusy=false;
+  try{ files=await raccogliAllegati(items,progSet); }catch(_){}
+  progClose(); _waBusy=false;
   if(!files.length){ toast('Nessun allegato in questi interventi'); return; }
   WA_FILES=files; mostraSheetAllegati();
 }
@@ -369,7 +392,7 @@ function viewDaFare(){
     <div class="selacts">
       <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
       <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()" title="Manda il riepilogo testuale su WhatsApp">${ic('message')}Invia su WhatsApp</button>
-      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()" title="Prepara le foto degli interventi selezionati">${ic('camera')}Allegati</button>
+      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()" title="Scarica le foto degli interventi selezionati">${ic('download')}Scarica allegati</button>
       <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
       <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
     </div></div>` : '';
