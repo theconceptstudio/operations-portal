@@ -205,7 +205,7 @@ function selItems(){
    distingue a colpo d'occhio il titolo e l'indirizzo. Niente nome appartamento:
    in cantiere serve la via, non "The Maison". */
 function waTestoInterventi(items){
-  const out=[`*🔧 INTERVENTI DA FARE · ${items.length}*`,''];
+  const out=[items.length===1?'*🔧 INTERVENTO DA FARE*':`*🔧 INTERVENTI DA FARE · ${items.length}*`,''];
   items.forEach((x,n)=>{
     const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
     const via=x.indirizzo||x.appartamento||''; const d=dateOf(x);
@@ -718,7 +718,7 @@ function rifTimeline(o){
     {k:'richiesto', lbl:'Richiesto',    d:o.richiesto_il},
     {k:'ordinato',  lbl:'Ordine fatto', d:o.ordinato_il},
     inCasa ? {k:'consegnato', lbl:'Arrivato in appartamento', d:o.data_consegna}
-           : {k:'magazzino',  lbl:'Arrivato in magazzino',    d:o.arrivo_magazzino},
+           : {k:'magazzino',  lbl:'Arrivato in magazzino',    d:o.arrivo_magazzino||o.data_consegna},
   ];
   return `<div class="rift">${passi.map(p=>{
     const fatto=!!p.d;
@@ -843,9 +843,12 @@ function viewStorico(){
   const search=`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`;
 
   let list=RIF_STORICO.slice();
+  list.sort((a,b)=>String(b.richiesto_il||b.data||'').localeCompare(String(a.richiesto_il||a.data||'')));
   if(RIF_HAPT) list=list.filter(o=>o.via===RIF_HAPT);
   const cards=list.map((o,i)=>{
-    const f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
+    let f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
+    if(o.fase==='consegnato') f={lbl:o.luogo==='Appartamento'?'Arrivato in appartamento':'Arrivato in magazzino',col:'#3f8f5e'};
+    else if(o.fase==='magazzino') f={lbl:'Arrivato in magazzino',col:'#3f8f5e'};
     const data=o.data?dShort(o.data):'';
     // ordini creati dall'app: elenco prodotti dal Note; ordini vecchi/manuali: titolo (Descrizione)
     const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
@@ -856,19 +859,15 @@ function viewStorico(){
     const alleg=(o.allegati||[]).filter(a=>a&&a.url);
     if(alleg.length) ALLEG[key]=alleg;
     const thumbs=alleg.length?`<div class="rifhdoc"><div class="rifhdoclbl">${ic('camera')}Ricevuta / foto (${alleg.length})</div>
-      <div class="thumbs">${alleg.map((a,j)=>a.video
+      <div class="thumbs">${alleg.map((a,j)=>isPdfA(a)
+        ? `<button class="thumb doc" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('clipboard')}<span>PDF</span></button>`
+        : a.video
         ? `<button class="thumb vid" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
         : `<button class="thumb" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
-    let attesa='';
-    if(!o.data_consegna){
-      if(o.luogo==='Appartamento')
-        attesa=`<div class="rifhnext">${ic('truck')}Arriva <b>direttamente in appartamento</b> · guarda in cassetta postale</div>`;
-      else if(o.prossima_consegna)
-        attesa=`<div class="rifhnext">${ic('truck')}Dal magazzino si porta in casa alla prossima pulizia · <b>${esc(dLong(o.prossima_consegna))}</b></div>`;
-    }
+    const attesa='';   // niente data di consegna prevista: la gestisce la logistica
     return `<div class="rifhist" data-h="${esc(hay)}">
       <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
-        <span class="rifhstato" style="color:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
+        <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
       ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
       ${rifTimeline(o)}
       ${thumbs}${attesa}
@@ -892,13 +891,9 @@ function iCard(x,kind){
   const via=x.indirizzo||x.appartamento;
   const id=x.notion_id;
   const tipoLbl=kind==='issue'?'Manutenzione':'Task';
-  // Messaggio WhatsApp precompilato con emoji per scansionarlo bene
-  const waLines=[`${kind==='issue'?'🔧':'✅'} ${tipoLbl}: ${titolo}`, via?`📍 Dove: ${via}`:'',
-    x.appartamento&&x.appartamento!==via?`🏠 ${x.appartamento}`:'',
-    plbl?`⚠️ Priorità: ${plbl}`:'', dataLbl?`📅 Quando: ${dataLbl}${late?' ⏰ in ritardo di '+ritardo+'g':''}`:'',
-    x.stato?`📌 Stato: ${x.stato}`:''].filter(Boolean);
+  // Stesso riepilogo della selezione multipla: titolo, via, data, priorità e istruzioni complete
   const waTarget=OFFICE_WA?`https://wa.me/${OFFICE_WA}`:'https://wa.me/';
-  const wa=`${waTarget}?text=${encodeURIComponent(waLines.join('\n'))}`;
+  const wa=`${waTarget}?text=${encodeURIComponent(waTestoInterventi([Object.assign({},x,{_kind:kind,_key:kind+':'+id})]))}`;
   const istr=(x.istruzioni||'').trim();
   const tbadge=kind==='issue'
     ? `<span class="tbadge">${ic('wrench')}Manutenzione</span>`
@@ -953,6 +948,8 @@ function iCard(x,kind){
 }
 
 function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }
+function isPdfA(a){ const u=String((a&&a.url)||'').split('?')[0];
+  return /\.pdf$/i.test((a&&a.name)||'') || /\.pdf$/i.test(u); }
 /* Sezione allegati CONDIVISA: mostra i file caricati dall'operatore E quelli aggiunti dall'ufficio
    su Notion. Si carica dal vivo (URL freschi) quando la card è aperta. */
 let ALLEG={};
@@ -968,7 +965,9 @@ function allegThumbsHtml(list,key){
   if(!list.length) return '';
   const thumbs=list.map((a,i)=>{
     const nome=esc(allegName(a,i));
-    return a.video
+    return isPdfA(a)
+      ? `<button class="thumb doc" onclick="openLB('${key}',${i})" title="${nome}">${ic('clipboard')}<span>PDF</span></button>`
+      : a.video
       ? `<button class="thumb vid" onclick="openLB('${key}',${i})" title="${nome}">${ic('play')}</button>`
       : `<button class="thumb" onclick="openLB('${key}',${i})" title="${nome}" style="background-image:url('${esc(a.url)}')"></button>`;
   }).join('');
@@ -1018,7 +1017,7 @@ function lbTE(e){ if(_lbX==null) return; const dx=e.changedTouches[0].clientX-_l
 /* precarica il precedente e il successivo: il cambio è immediato */
 function lbPreload(){ const n=LB.list.length; if(n<2) return;
   [1,-1].forEach(d=>{ const a=LB.list[(LB.idx+d+n)%n];
-    if(a&&!a.video){ const im=new Image(); im.src=a.url; } }); }
+    if(a&&!a.video&&!isPdfA(a)){ const im=new Image(); im.src=a.url; } }); }
 function paintLB(){
   if(!LB.open) return;
   let el=document.getElementById('lbox');
@@ -1030,12 +1029,16 @@ function paintLB(){
   }
   const a=LB.list[LB.idx]; if(!a){ closeLB(); return; }
   const n=LB.list.length, nome=esc(allegName(a,LB.idx));
-  const media = a.video
+  const media = isPdfA(a)
+    ? `<iframe class="lbmedia lbdoc" src="${esc(a.url)}" title="${nome}"></iframe>`
+    : a.video
     ? `<video class="lbmedia" src="${esc(a.url)}" controls playsinline preload="metadata"></video>`
     : `<img class="lbmedia" src="${esc(a.url)}" alt="${nome}">`;
   const nav = n>1 ? `<button class="lbnav prev" onclick="lbGo(-1)" aria-label="Precedente">${ic('chevronL')}</button>
       <button class="lbnav next" onclick="lbGo(1)" aria-label="Successivo">${ic('chevronR')}</button>` : '';
-  const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> x.video
+  const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> isPdfA(x)
+      ? `<button class="lbth doc ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('clipboard')}</button>`
+      : x.video
       ? `<button class="lbth vid ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('play')}</button>`
       : `<button class="lbth ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}" style="background-image:url('${esc(x.url)}')"></button>`).join('')}</div>` : '';
   el.innerHTML=`<div class="lbtop">

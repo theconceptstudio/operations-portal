@@ -679,3 +679,14 @@ video.lbmedia{width:100%}
 .wptxt{font-family:var(--body);font-size:14px;color:var(--ink);margin-bottom:12px;text-align:center}
 .wpbar{height:6px;border-radius:999px;background:var(--line-2);overflow:hidden}
 .wpfill{height:100%;width:8%;background:var(--p-l);border-radius:999px;transition:width .25s ease}
+
+/* Ricevute PDF: miniatura documento + anteprima su fondo bianco */
+.thumb.doc{background:#fff;border:1px solid var(--line-2);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;color:var(--ink)}
+.thumb.doc .ic{width:18px;height:18px}
+.thumb.doc span{font-family:var(--light);font-size:8px;letter-spacing:1.5px;color:var(--greige)}
+.lbth.doc{background:#fff;display:flex;align-items:center;justify-content:center;color:#2B160F}
+.lbth.doc .ic{width:18px;height:18px}
+iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
+/* Stato ordine: chip pieno, si legge al volo */
+.rifhstato.pieno{color:#fff;font-weight:600;letter-spacing:.4px}
