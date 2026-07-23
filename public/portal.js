@@ -529,7 +529,7 @@ function pulizieRecap(list, dISO){
     const o=orariPulizia(p);
     const tip=p.tipo==='Proprietario'?' · 👤 proprietario':p.tipo==='Intermedia'?' · 🔄 intermedia':'';
     out.push(`🕐 ${o.i}–${o.f}`+tip);
-    const ex=[]; if(p.late_checkout)ex.push('⏰ late checkout'); if(p.early_checkin)ex.push('🔑 early check-in'); if(depOk(p.deposito))ex.push('🧳 deposito: '+p.deposito);
+    const ex=[]; if(p.late_checkout)ex.push('⏰ late checkout'); if(p.early_checkin)ex.push('🔑 early check-in'); if(depOk(p.deposito))ex.push('🧳 deposito: '+p.deposito+' (dalle 12:30)');
     if(ex.length) out.push(ex.join(' · '));
     out.push('');
   });
@@ -555,7 +555,7 @@ function gChip(p){
   if(depOk(p.deposito)) icons.push(ic('luggage'));
   const done=p.stato==='Completata';
   const o=orariPulizia(p);
-  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}${depOk(p.deposito)?' · deposito: '+esc(p.deposito):''}${p.late_checkout?' · late checkout':''}${p.early_checkin?' · early check-in':''}">
+  return `<div class="gchip ${done?'done':''}" style="border-left:3px solid ${col}" title="${esc(p.appartamento)} · ${esc(p.tipo||'Standard')}${depOk(p.deposito)?' · deposito: '+esc(p.deposito)+' dalle 12:30':''}${p.late_checkout?' · late checkout':''}${p.early_checkin?' · early check-in':''}">
     <span class="gt">${o.i}–${o.f}</span>${icons.join('')}${done?ic('check'):''}</div>`;
 }
 function pulizieLegenda(){
@@ -566,7 +566,7 @@ function pulizieLegenda(){
     <span class="lsep"></span>
     <span>${ic('clock')}Late checkout (12–15)</span>
     <span>${ic('key')}Early check-in</span>
-    <span>${ic('luggage')}Deposito bagagli</span></div>`;
+    <span>${ic('luggage')}Deposito bagagli (dalle 12:30)</span></div>`;
 }
 function pulizieGrid(puliz){
   const days=[]; for(let i=0;i<7;i++) days.push(addDays(WEEK0,i));
@@ -603,7 +603,7 @@ function pCard(p){
   const svc=[];
   if(p.late_checkout) svc.push(`<span class="svc">${ic('clock')}Late checkout</span>`);
   if(p.early_checkin) svc.push(`<span class="svc">${ic('key')}Early check-in</span>`);
-  if(depOk(p.deposito)) svc.push(`<span class="svc">${ic('luggage')}Deposito: ${esc(p.deposito)}</span>`);
+  if(depOk(p.deposito)) svc.push(`<span class="svc">${ic('luggage')}Deposito: ${esc(p.deposito)} · dalle 12:30</span>`);
   const o=orariPulizia(p);
   const ora=`${esc(o.i)}–${esc(o.f)}`;
   const done=p.stato==='Completata';
