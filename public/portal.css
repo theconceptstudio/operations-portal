@@ -634,17 +634,19 @@ video.lbmedia{width:100%}
 .rifhnext .ic{width:15px;height:15px;color:var(--greige);flex:none;margin-top:1px}
 .rifhnext b{font-family:var(--body);color:var(--ink)}
 
-/* Percorso del pacco: una riga sola di pallini (l'etichetta di fase e' gia'
-   nel chip dell'header) invece di 4 righe intere — molto meno da scorrere. */
+/* Percorso del pacco: elenco degli eventi per esteso (piu' chiaro dei soli
+   pallini), ma righe strette per stare in meno spazio nella lista. */
 .rifhistp.nolinea{border-top:none;padding-top:0;margin-top:5px}
-.riftcompact{display:flex;align-items:center;gap:9px;margin-top:9px;padding-top:9px;
-  border-top:1px solid var(--line)}
-.riftdots{display:flex;align-items:center;flex:none}
-.riftd2{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
-.riftd2.ok{background:var(--p-l)}
-.riftln{width:13px;height:2px;background:var(--line-2);flex:none}
-.riftln.ok{background:var(--p-l)}
-.riftcur{font-family:var(--light);font-size:11.5px;color:var(--greige-soft);white-space:nowrap}
+.rift{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+.riftp{display:flex;align-items:center;gap:8px;padding:3px 0;font-family:var(--light);
+  font-size:12px;color:var(--greige-soft)}
+.riftdot{width:8px;height:8px;border-radius:50%;background:var(--line-2);flex:none;
+  box-shadow:0 0 0 3px #fff}
+.riftlbl{flex:1}
+.riftd{font-family:var(--body);font-size:11.5px;color:var(--greige-soft)}
+.riftp.ok{color:var(--ink)}
+.riftp.ok .riftdot{background:var(--p-l)}
+.riftp.ok .riftd{color:var(--ink)}
 
 /* Invio riepilogo su WhatsApp dalla selezione multipla */
 .selwa{display:inline-flex;align-items:center;gap:6px;background:#25D366;color:#fff;border:none;
