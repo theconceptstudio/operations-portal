@@ -952,8 +952,8 @@ function viewStorico(){
   const dbar = RIF_DSEL.size ? `<div class="selbar"><span>${RIF_DSEL.size} sel.</span>
     <div class="selacts">
       <input type="date" id="rifddate" class="rifddt" value="${RIF_DDATE||todayISO()}" onchange="RIF_DDATE=this.value">
-      <button class="selwa" onclick="rifWaMagazzino()">${ic('message')}Al magazzino</button>
-      <button class="selconf" onclick="rifConsegna()">${ic('check')}Portato in appartamento</button>
+      <button class="selwa" onclick="rifWaMagazzino()">${ic('message')}Inoltra al magazzino</button>
+      <button class="selconf" onclick="rifConsegna()">${ic('check')}Consegnato in appartamento</button>
     </div></div>` : '';
 
   return aptChips+faseChips+search+body+`<div class="riffabsp"></div>`+dbar;
