@@ -208,20 +208,21 @@ function selItems(){
 /* Testo per WhatsApp: gli asterischi diventano grassetto, così il manutentore
    distingue a colpo d'occhio il titolo e l'indirizzo. Niente nome appartamento:
    in cantiere serve la via, non "The Maison". */
+/* Riepilogo INTERVENTI (Da fare): formato emoji, ben distinto da quello rifornimenti */
 function waTestoInterventi(items){
-  const out=[items.length===1?'*Intervento da fare*':`*Interventi da fare (${items.length})*`,''];
+  const out=[items.length===1?'*🔧 INTERVENTO DA FARE*':`*🔧 INTERVENTI DA FARE · ${items.length}*`,''];
   items.forEach((x,n)=>{
     const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
     const via=x.indirizzo||x.appartamento||''; const d=dateOf(x);
-    out.push(`*${n+1}) ${t}*`);
-    if(via) out.push(via);
-    const riga=[d?dLong(d):null, x.priorita?('Priorità: '+(P_LBL[x.priorita]||x.priorita)):null].filter(Boolean).join(' · ');
-    if(riga) out.push(riga);
-    const istr=(x.istruzioni||'').trim(); if(istr) out.push('Istruzioni: '+istr);
-    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`Allegati: ${na} in arrivo`);
-    out.push('');
+    out.push(`*${n+1}) ${t.toUpperCase()}*`);
+    if(via) out.push(`📍 *${via}*`);
+    if(d) out.push(`📅 ${dLong(d)}`);
+    if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
+    const istr=(x.istruzioni||'').trim(); if(istr) out.push(`📝 ${istr}`);
+    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`📎 ${na} foto in arrivo`);
+    out.push('———————');
   });
-  return out.join('\n').trim();
+  return out.join('\n').replace(/———————$/,'').trim();
 }
 
 function safeName(s){ return (s||'').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60); }
@@ -732,11 +733,17 @@ async function rifConsegna(){
 function rifWaMagazzino(){
   const items=(RIF_STORICO||[]).filter(o=>RIF_DSEL.has(o.id));
   if(!items.length){ toast('Seleziona prima la merce'); return; }
-  const out=[`*Consegne da fare (${items.length})*`,''];
-  items.forEach((o,n)=>{
-    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim()||(o.descrizione||'').trim();
-    out.push(`*${n+1}) ${o.via}*`);
-    if(prod) out.push(prod);
+  // Formato CONSEGNE: raggruppato per appartamento, cosi' chi consegna
+  // legge una via sola e sotto tutta la merce da portarci.
+  const perVia={};
+  items.forEach(o=>{ (perVia[o.via]=perVia[o.via]||[]).push(o); });
+  const out=[items.length===1?'*📦 CONSEGNA DA FARE*':`*📦 CONSEGNE DA FARE · ${items.length}*`,''];
+  Object.keys(perVia).forEach(via=>{
+    out.push(`*📍 ${via.toUpperCase()}*`);
+    perVia[via].forEach(o=>{
+      const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim()||(o.descrizione||'').trim();
+      if(prod) out.push(`• ${prod}`);
+    });
     out.push('');
   });
   window.open('https://wa.me/?text='+encodeURIComponent(out.join('\n').trim()),'_blank','noopener');
