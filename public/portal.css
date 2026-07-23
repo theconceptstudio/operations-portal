@@ -378,7 +378,7 @@ svg{display:block}
   .day{padding:14px 4px 12px}
   .day .dnum{font-size:26px}
   .daylbl{font-size:28px;margin-bottom:22px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   .pcard,.icard{margin-bottom:0}
   .pcard .via{font-size:26px}
   .dove .via{font-size:26px}
@@ -559,9 +559,9 @@ svg{display:block}
 .rifhistd{display:flex;align-items:center;gap:6px;font-family:var(--light);font-size:12px;
   color:var(--greige);margin:8px 0 0}
 .rifhistd .ic{width:14px;height:14px}
-.rifhistp{font-family:var(--light);font-size:13.5px;color:var(--greige-text);margin-top:8px;
+.rifhistp{font-family:var(--light);font-size:14.5px;color:var(--ink);margin-top:8px;
   padding-top:9px;border-top:1px solid var(--line);line-height:1.5}
-@media (min-width:720px){ .rifhistlist{display:grid;grid-template-columns:1fr 1fr;gap:11px} }
+@media (min-width:720px){ .rifhistlist{display:grid;grid-template-columns:1fr 1fr;gap:11px;align-items:start} }
 
 /* Selettore appartamento (chiaro che è cliccabile per cambiare) */
 .rifaptsel{display:inline-flex;align-items:center;gap:7px;background:var(--white);
@@ -732,3 +732,29 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 .selx{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid rgba(255,255,255,.28);
   color:var(--cream);border-radius:999px;padding:5px 10px;font-family:var(--light);font-size:11.5px;cursor:pointer}
 .selx .ic{width:12px;height:12px}
+
+/* Legenda "Da fare": sempre visibile su desktop, a tendina su mobile */
+.legwrap{margin:2px 0 14px}
+.legbtn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;
+  font-family:var(--light);font-size:11.5px;color:var(--greige);padding:4px 2px}
+.legbtn .ic{width:13px;height:13px}
+.legitems{display:none;flex-wrap:wrap;gap:7px 14px;align-items:center;margin-top:8px;
+  font-family:var(--light);font-size:11.5px;color:var(--greige-text)}
+.legwrap.open .legitems{display:flex}
+.legitems span{display:inline-flex;align-items:center;gap:5px}
+.legdot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.legtag{border-radius:999px;padding:2px 9px;font-size:10.5px}
+.legtag.late{background:#fbecea;color:#c0392b}
+.legtag.conf{background:#edf4ef;color:#3f8f5e}
+.legtag.conf .ic{width:11px;height:11px}
+.legtag.nod{border:1px dashed var(--greige-soft);color:var(--greige)}
+@media (min-width:1024px){ .legbtn{display:none} .legitems{display:flex;margin-top:0} }
+
+/* Sezione "Senza data": in fondo, chiaramente diversa dal flusso datato */
+.nodate-sec{margin-top:28px;padding-top:16px;border-top:2px dashed var(--line-2)}
+.nodate-hd{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px;
+  font-family:var(--light);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8a6420}
+.nodate-hd .ic{width:14px;height:14px}
+.nodate-hd .num{font-family:var(--body);font-size:12px}
+.nodate-sub{letter-spacing:.3px;text-transform:none;font-size:11.5px;color:var(--greige)}
+.nodate-sec .icard{border:1px dashed var(--greige-soft);background:#fbfaf6}

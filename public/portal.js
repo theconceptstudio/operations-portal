@@ -45,7 +45,8 @@ function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24
 let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={}, SEL_RESCHED_DATE='';
 let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
-let PVIEW='giorno';
+let PVIEW='giorno', LEG_OPEN=false;
+function toggleLeg(){ LEG_OPEN=!LEG_OPEN; render(); }
 function setPView(v){ PVIEW=v; render(); }
 
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
@@ -388,8 +389,19 @@ function viewDaFare(){
     </div>
     <button class="vbtn ${SELMODE?'on':''}" onclick="toggleSelMode()">${ic('check')}${SELMODE?'Annulla':'Seleziona'}</button></div>`;
 
+  const leg=`<div class="legwrap ${LEG_OPEN?'open':''}">
+    <button class="legbtn" onclick="toggleLeg()">${ic('info')}Legenda ${ic(LEG_OPEN?'chevronU':'chevronD')}</button>
+    <div class="legitems">
+      <span><i class="legdot" style="background:#b23b2e"></i>Urgente</span>
+      <span><i class="legdot" style="background:#c8792f"></i>Alta</span>
+      <span><i class="legdot" style="background:#3b6ea5"></i>Media</span>
+      <span><i class="legdot" style="background:#3f8f5e"></i>Bassa</span>
+      <span class="legtag late">in ritardo</span>
+      <span class="legtag conf">${ic('check')}confermato</span>
+      <span class="legtag nod">senza data</span>
+    </div></div>`;
   if(!items.length){
-    return chips+ctrl+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
+    return chips+ctrl+leg+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
   }
   const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
     <div class="selacts">
@@ -410,7 +422,7 @@ function viewDaFare(){
   }else{
     body=renderByUrgency(items);
   }
-  return chips+ctrl+body+selbar;
+  return chips+ctrl+leg+body+selbar;
 }
 
 /* DATA: banner ritardi (apri/chiudi) → settimana scorribile → giorno scelto */
@@ -429,7 +441,10 @@ function renderByData(items, overdue){
   day += list.length
     ? `<div class="grid">${list.map(x=>iCard(x,x._kind)).join('')}</div>`
     : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
-  if(undated.length) day += sectionHTML('Senza data', undated.sort((a,b)=>(dateOf(a)||'').localeCompare(dateOf(b)||'')), '', ic('info'));
+  if(undated.length) day += `<div class="nodate-sec">
+    <div class="nodate-hd">${ic('info')}Senza data <span class="num">${undated.length}</span>
+      <span class="nodate-sub">da calendarizzare: chiedi la data all'ufficio</span></div>
+    <div class="grid">${undated.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
   return banner + weekStrip(byDay) + day;
 }
 
