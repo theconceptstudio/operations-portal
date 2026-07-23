@@ -208,21 +208,32 @@ function selItems(){
 /* Testo per WhatsApp: gli asterischi diventano grassetto, così il manutentore
    distingue a colpo d'occhio il titolo e l'indirizzo. Niente nome appartamento:
    in cantiere serve la via, non "The Maison". */
-/* Riepilogo INTERVENTI (Da fare): formato emoji, ben distinto da quello rifornimenti */
+/* Riepilogo INTERVENTI (Da fare). Emoji su mobile; su laptop versione pulita
+   in grassetto (le emoji nel compose di WhatsApp Web davano problemi).
+   Separatore a linea tra un intervento e l'altro, per leggere a colpo d'occhio. */
+const IS_MOBILE=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const WA_SEP='───────────';
 function waTestoInterventi(items){
-  const out=[items.length===1?'*🔧 INTERVENTO DA FARE*':`*🔧 INTERVENTI DA FARE · ${items.length}*`,''];
+  const E=IS_MOBILE;
+  const out=[items.length===1?(E?'*🔧 INTERVENTO DA FARE*':'*Intervento da fare*')
+                             :(E?`*🔧 INTERVENTI DA FARE · ${items.length}*`:`*Interventi da fare (${items.length})*`),''];
   items.forEach((x,n)=>{
     const t=x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
     const via=x.indirizzo||x.appartamento||''; const d=dateOf(x);
-    out.push(`*${n+1}) ${t.toUpperCase()}*`);
-    if(via) out.push(`📍 *${via}*`);
-    if(d) out.push(`📅 ${dLong(d)}`);
-    if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
-    const istr=(x.istruzioni||'').trim(); if(istr) out.push(`📝 ${istr}`);
-    const na=(ALLEG[x._key]||[]).length; if(na) out.push(`📎 ${na} foto in arrivo`);
-    out.push('———————');
+    out.push(`*${n+1}) ${E?t.toUpperCase():t}*`);
+    if(via) out.push(E?`📍 *${via}*`:via);
+    if(E){
+      if(d) out.push(`📅 ${dLong(d)}`);
+      if(x.priorita) out.push(`⚠️ Priorità: ${P_LBL[x.priorita]||x.priorita}`);
+    }else{
+      const r=[d?dLong(d):null, x.priorita?('Priorità: '+(P_LBL[x.priorita]||x.priorita)):null].filter(Boolean).join(' · ');
+      if(r) out.push(r);
+    }
+    const istr=(x.istruzioni||'').trim(); if(istr) out.push((E?'📝 ':'Istruzioni: ')+istr);
+    const na=(ALLEG[x._key]||[]).length; if(na) out.push((E?'📎 ':'Allegati: ')+na+(E?' foto in arrivo':' in arrivo'));
+    out.push(WA_SEP);
   });
-  return out.join('\n').replace(/———————$/,'').trim();
+  return out.join('\n').replace(new RegExp(WA_SEP+'$'),'').trim();
 }
 
 function safeName(s){ return (s||'').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60); }
@@ -733,18 +744,21 @@ async function rifConsegna(){
 function rifWaMagazzino(){
   const items=(RIF_STORICO||[]).filter(o=>RIF_DSEL.has(o.id));
   if(!items.length){ toast('Seleziona prima la merce'); return; }
-  // Formato CONSEGNE: raggruppato per appartamento, cosi' chi consegna
-  // legge una via sola e sotto tutta la merce da portarci.
+  // Formato CONSEGNE: raggruppato per appartamento (una via, sotto tutta la merce),
+  // separatore a linea tra una casa e l'altra. Emoji su mobile, pulito su laptop.
+  const E=IS_MOBILE;
   const perVia={};
   items.forEach(o=>{ (perVia[o.via]=perVia[o.via]||[]).push(o); });
-  const out=[items.length===1?'*📦 CONSEGNA DA FARE*':`*📦 CONSEGNE DA FARE · ${items.length}*`,''];
-  Object.keys(perVia).forEach(via=>{
-    out.push(`*📍 ${via.toUpperCase()}*`);
+  const out=[items.length===1?(E?'*📦 CONSEGNA DA FARE*':'*Consegna da fare*')
+                             :(E?`*📦 CONSEGNE DA FARE · ${items.length}*`:`*Consegne da fare (${items.length})*`),''];
+  const vie=Object.keys(perVia);
+  vie.forEach((via,i)=>{
+    out.push(E?`*📍 ${via.toUpperCase()}*`:`*${via}*`);
     perVia[via].forEach(o=>{
       const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim()||(o.descrizione||'').trim();
       if(prod) out.push(`• ${prod}`);
     });
-    out.push('');
+    out.push(i<vie.length-1?WA_SEP:'');
   });
   window.open('https://wa.me/?text='+encodeURIComponent(out.join('\n').trim()),'_blank','noopener');
 }
