@@ -553,8 +553,8 @@ svg{display:block}
 .rifback2{display:inline-flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
   color:var(--ink);font-family:var(--body);font-size:14px;padding:4px 0}
 .rifback2 .ic{width:17px;height:17px}
-.rifhistlist{display:flex;flex-direction:column;gap:11px}
-.rifhist{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.rifhistlist{display:flex;flex-direction:column;gap:9px}
+.rifhist{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
 .rifhisth{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .rifhisth .rifha{font-size:15px}
 .rifhstato{font-family:var(--body);font-size:11px;letter-spacing:.3px;border:1px solid;border-radius:999px;
@@ -623,9 +623,9 @@ video.lbmedia{width:100%}
 }
 
 /* Cronologia — ricevute e finestra di consegna */
-.rifhdoc{margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+.rifhdoc{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
 .rifhdoclbl{display:flex;align-items:center;gap:6px;font-family:var(--light);font-size:9px;
-  letter-spacing:2px;text-transform:uppercase;color:var(--greige);margin-bottom:8px}
+  letter-spacing:2px;text-transform:uppercase;color:var(--greige);margin-bottom:6px}
 .rifhdoclbl .ic{width:13px;height:13px}
 .rifhdoc .thumb{width:52px;height:52px}
 .rifhnext{display:flex;align-items:flex-start;gap:7px;margin-top:11px;padding:10px 12px;
@@ -634,18 +634,17 @@ video.lbmedia{width:100%}
 .rifhnext .ic{width:15px;height:15px;color:var(--greige);flex:none;margin-top:1px}
 .rifhnext b{font-family:var(--body);color:var(--ink)}
 
-/* Percorso del pacco (timeline compatta) */
-.rifhistp.nolinea{border-top:none;padding-top:0;margin-top:6px}
-.rift{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
-.riftp{display:flex;align-items:center;gap:9px;padding:5px 0;font-family:var(--light);
-  font-size:12.5px;color:var(--greige-soft)}
-.riftdot{width:9px;height:9px;border-radius:50%;background:var(--line-2);flex:none;
-  box-shadow:0 0 0 3px #fff}
-.riftlbl{flex:1}
-.riftd{font-family:var(--body);font-size:12px;color:var(--greige-soft)}
-.riftp.ok{color:var(--ink)}
-.riftp.ok .riftdot{background:var(--p-l)}
-.riftp.ok .riftd{color:var(--ink)}
+/* Percorso del pacco: una riga sola di pallini (l'etichetta di fase e' gia'
+   nel chip dell'header) invece di 4 righe intere — molto meno da scorrere. */
+.rifhistp.nolinea{border-top:none;padding-top:0;margin-top:5px}
+.riftcompact{display:flex;align-items:center;gap:9px;margin-top:9px;padding-top:9px;
+  border-top:1px solid var(--line)}
+.riftdots{display:flex;align-items:center;flex:none}
+.riftd2{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
+.riftd2.ok{background:var(--p-l)}
+.riftln{width:13px;height:2px;background:var(--line-2);flex:none}
+.riftln.ok{background:var(--p-l)}
+.riftcur{font-family:var(--light);font-size:11.5px;color:var(--greige-soft);white-space:nowrap}
 
 /* Invio riepilogo su WhatsApp dalla selezione multipla */
 .selwa{display:inline-flex;align-items:center;gap:6px;background:#25D366;color:#fff;border:none;

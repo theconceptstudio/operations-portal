@@ -800,25 +800,31 @@ const RIF_FASE={
 };
 const RIF_FASE_ORD={magazzino:0, ordinato:1, richiesto:2, consegnato:3};  // prima le cose azionabili
 /* Percorso del pacco: pipeline completa fino alla consegna in appartamento */
+// Mobile: la lista storico va scorsa spesso, quindi la pipeline e' un'unica riga
+// di pallini (il pallino/etichetta di fase e' gia' nell'header della scheda) +
+// "dal gg mmm" della fase attuale. Prima erano 4 righe intere per scheda.
 function rifTimeline(o){
   const inCasa = o.luogo==='Appartamento';
   const passi = inCasa ? [
     {lbl:'Richiesto',                  d:o.richiesto_il},
-    {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
+    {lbl:'Ordine fatto',               d:o.ordinato_il},
     {lbl:'Consegnato in appartamento', d:o.portato_il||o.data_consegna},
   ] : [
     {lbl:'Richiesto',                  d:o.richiesto_il},
-    {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
+    {lbl:'Ordine fatto',               d:o.ordinato_il},
     {lbl:'Arrivato in magazzino',      d:o.arrivo_magazzino||o.data_consegna},
     {lbl:'Consegnato in appartamento', d:o.portato_il},
   ];
-  return `<div class="rift">${passi.map(p=>{
+  let curIdx=0;
+  passi.forEach((p,i)=>{ if(p.d) curIdx=i; });
+  const dots=passi.map((p,i)=>{
     const fatto=!!p.d;
-    return `<div class="riftp ${fatto?'ok':''}">
-      <span class="riftdot"></span>
-      <span class="riftlbl">${esc(p.lbl)}</span>
-      <span class="riftd">${fatto?esc(dShort(p.d)):'—'}</span></div>`;
-  }).join('')}</div>`;
+    const ln=i<passi.length-1?`<span class="riftln ${fatto?'ok':''}"></span>`:'';
+    return `<span class="riftd2 ${fatto?'ok':''}" title="${esc(p.lbl)}${fatto?' · '+esc(dShort(p.d)):''}"></span>${ln}`;
+  }).join('');
+  const cur=passi[curIdx];
+  return `<div class="riftcompact"><div class="riftdots">${dots}</div>
+    <span class="riftcur">${cur.d?'dal '+esc(dShort(cur.d)):''}</span></div>`;
 }
 
 function viewRifornimenti(){
