@@ -721,3 +721,14 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
   background:var(--white);border:1px solid var(--line-2);border-radius:12px;padding:14px;
   font-family:var(--body);font-size:14px;color:var(--ink);cursor:pointer}
 .rifmore .ic{width:16px;height:16px;color:var(--greige)}
+
+/* Scheda selezionabile per intero (merce in magazzino) */
+.rifhist.selettabile{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.rifhist.selettabile:hover{border-color:var(--greige-soft)}
+.rifhist.selettabile:active{transform:scale(.995)}
+
+/* Annulla la selezione consegne (riparti da capo) */
+.selinfo{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.selx{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid rgba(255,255,255,.28);
+  color:var(--cream);border-radius:999px;padding:5px 10px;font-family:var(--light);font-size:11.5px;cursor:pointer}
+.selx .ic{width:12px;height:12px}

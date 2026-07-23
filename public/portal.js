@@ -117,6 +117,8 @@ async function silentRefresh(){
     const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
     if(!fresh.error){ DATA=fresh; saveCache(); render(); }
   }catch(_){}
+  // Monitora aperta: riallinea anche gli ordini (solo se non ha caricato pagine vecchie)
+  if(TAB==='rifornimenti'&&RIF_VIEW==='storico'&&!RIF_LOADEDMORE&&!RIF_DSEL.size) rifLoadStorico();
   _refreshing=false;
 }
 let _autoOn=false;
@@ -147,7 +149,7 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
 }
-function setTab(t){ TAB=t; OPEN_CARDS.clear(); if(t==='rifornimenti') rifEnsureApts(); render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
 function setFilter(f){ FILTER=f; OPEN_CARDS.clear(); render(); }
 function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
@@ -682,10 +684,22 @@ function rifDoneClose(){ RIF_DONE=null; render(); }
 function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
 
 /* Cronologia ordini */
-function rifShowStorico(){ RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); render(); if(RIF_STORICO===null) rifLoadStorico(); }
+let RIF_LOADEDMORE=false;
+function rifShowStorico(){
+  RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); RIF_LOADEDMORE=false;
+  // 1. mostra SUBITO l'ultimo stato salvato (apertura istantanea)…
+  if(RIF_STORICO===null){
+    try{ const c=localStorage.getItem('tcs_rifsto_'+TOKEN);
+      if(c){ const j=JSON.parse(c); RIF_STORICO=j.s; RIF_CURSOR=j.c; RIF_HASMORE=j.h; } }catch(_){}
+  }
+  render();
+  // 2. …e intanto arriva il dato fresco da Notion (live)
+  rifLoadStorico();
+}
 function histSetFase(f){ RIF_HFASE=f||null; render(); }
 /* Selezione merce in magazzino -> conferma "portata in appartamento" */
 function rifDSel(id){ if(RIF_DSEL.has(id)) RIF_DSEL.delete(id); else RIF_DSEL.add(id); render(); }
+function rifDSelClear(){ RIF_DSEL=new Set(); render(); toast('Selezione annullata'); }
 async function rifConsegna(){
   const ids=[...RIF_DSEL]; if(!ids.length) return;
   const dv=(document.getElementById('rifddate')||{}).value||todayISO();
@@ -720,7 +734,10 @@ async function rifLoadStorico(altri){
     if(j&&j.ok){
       RIF_STORICO=(altri&&RIF_STORICO)?RIF_STORICO.concat(j.storico):j.storico;
       RIF_CURSOR=j.next_cursor||null; RIF_HASMORE=!!j.has_more;
-    } else if(!altri) RIF_STORICO=[];
+      if(altri) RIF_LOADEDMORE=true;
+      else try{ localStorage.setItem('tcs_rifsto_'+TOKEN,
+        JSON.stringify({s:j.storico,c:RIF_CURSOR,h:RIF_HASMORE})); }catch(_){}
+    } else if(!altri&&RIF_STORICO===null) RIF_STORICO=[];
   }catch(_){ if(!altri) RIF_STORICO=[]; }
   if(TAB==='rifornimenti'&&RIF_VIEW==='storico') render();
 }
@@ -938,17 +955,17 @@ function viewStorico(){
     if(alleg.length) ALLEG[key]=alleg;
     const thumbs=alleg.length?`<div class="rifhdoc"><div class="rifhdoclbl">${ic('camera')}Ricevuta / foto (${alleg.length})</div>
       <div class="thumbs">${alleg.map((a,j)=>isPdfA(a)
-        ? `<button class="thumb doc" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('clipboard')}<span>PDF</span></button>`
+        ? `<button class="thumb doc" onclick="event.stopPropagation();openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('clipboard')}<span>PDF</span></button>`
         : a.video
-        ? `<button class="thumb vid" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
-        : `<button class="thumb" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
+        ? `<button class="thumb vid" onclick="event.stopPropagation();openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
+        : `<button class="thumb" onclick="event.stopPropagation();openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
     // la merce in magazzino si può selezionare per confermare la consegna in casa
     const selezionabile=o.fase==='magazzino' && o.id;
     const sel=selezionabile && RIF_DSEL.has(o.id);
     const selBtn=selezionabile
-      ? `<button class="rifsel ${sel?'on':''}" onclick="rifDSel('${o.id}')" title="Seleziona per confermare la consegna">${sel?ic('check'):''}</button>`
+      ? `<span class="rifsel ${sel?'on':''}">${sel?ic('check'):''}</span>`
       : '';
-    return `<div class="rifhist ${sel?'sel':''}" data-h="${esc(hay)}">
+    return `<div class="rifhist ${sel?'sel':''} ${selezionabile?'selettabile':''}" data-h="${esc(hay)}"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
       <div class="rifhisth"><span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
       ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
@@ -964,7 +981,8 @@ function viewStorico(){
   const more = RIF_HASMORE ? `<button class="rifmore" onclick="rifLoadStorico(true)">${ic('history')}Mostra ordini più vecchi</button>` : '';
 
   // barra conferma consegna: appare quando c'è merce selezionata
-  const dbar = RIF_DSEL.size ? `<div class="selbar"><span>${RIF_DSEL.size} sel.</span>
+  const dbar = RIF_DSEL.size ? `<div class="selbar"><span class="selinfo">${RIF_DSEL.size} sel.
+      <button class="selx" onclick="rifDSelClear()" title="Svuota la selezione e riparti">${ic('close')}Annulla</button></span>
     <div class="selacts">
       <label class="rifddtw"><span>Consegnato il</span>
         <input type="date" id="rifddate" class="rifddt" value="${RIF_DDATE||todayISO()}" onchange="RIF_DDATE=this.value"></label>
