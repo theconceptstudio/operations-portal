@@ -387,6 +387,8 @@ def rif_storico(token):
         portato = bool((pr.get('Consegnato in appartamento', {}) or {}).get('checkbox'))
         portato_il = ((pr.get('Consegnato in appartamento il', {}) or {}).get('date') or {}).get('start')
         ordinato = stato in ('Acquistato', 'Da pagare')
+        # REGOLA: Luogo di consegna VUOTO = Magazzino (default). "Appartamento" vale
+        # solo se Andres lo seleziona esplicitamente: cosi' il pregresso non va toccato.
         # Pipeline a 4 fasi, come la vede l'operatore:
         # richiesto -> ordinato (in arrivo) -> magazzino -> consegnato in appartamento.
         # Se il luogo di consegna e' l'appartamento, la spunta di Andres chiude tutto.
