@@ -384,16 +384,25 @@ def rif_storico(token):
         magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
         acquisto = ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start')
         luogo = ((pr.get('Luogo di consegna', {}) or {}).get('select') or {}).get('name')
+        portato = bool((pr.get('Portato in appartamento', {}) or {}).get('checkbox'))
+        portato_il = ((pr.get('Portato il', {}) or {}).get('date') or {}).get('start')
         ordinato = stato in ('Acquistato', 'Da pagare')
-        # fase del ciclo di vita, come la vede l'operatore
-        if consegna:      fase = 'consegnato'
-        elif magazzino:   fase = 'magazzino'
-        elif ordinato:    fase = 'ordinato'
-        else:             fase = 'richiesto'
+        # Pipeline a 4 fasi, come la vede l'operatore:
+        # richiesto -> ordinato (in arrivo) -> magazzino -> consegnato in appartamento.
+        # Se il luogo di consegna e' l'appartamento, la spunta di Andres chiude tutto.
+        if portato or (luogo == 'Appartamento' and consegna):
+            fase = 'consegnato'
+        elif magazzino or consegna:
+            fase = 'magazzino'
+        elif ordinato:
+            fase = 'ordinato'
+        else:
+            fase = 'richiesto'
         # la richiesta e' la creazione della pagina: non viene mai sovrascritta
         richiesto_il = (p.get('created_time') or '')[:10] or None
         aid = rel[0] if rel else None
         out.append({
+            'id': p['id'],
             'data': ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start'),
             'via': a.get('indirizzo') or a.get('nome') or '—',
             'stato': stato,
@@ -402,6 +411,7 @@ def rif_storico(token):
             'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
             'fase': fase,
             'luogo': luogo,                 # Appartamento (arriva dritto in casa) o Magazzino
+            'portato_il': portato_il or (consegna if (luogo == 'Appartamento' and consegna) else None),
             # i quattro momenti del percorso del pacco
             'richiesto_il': richiesto_il,
             'ordinato_il': acquisto if ordinato else None,
@@ -414,6 +424,35 @@ def rif_storico(token):
     resp = jsonify({'ok': True, 'storico': out})
     resp.headers['Cache-Control'] = 'no-store'
     return resp
+
+@app.route('/api/o/<token>/rif-consegna', methods=['POST'])
+def rif_consegna(token):
+    """L'operatore conferma di aver PORTATO IN APPARTAMENTO la merce selezionata
+    (in una certa data). Spunta su Notion 'Portato in appartamento' + 'Portato il':
+    Andres vede la checkbox e sa che la roba e' in casa. Solo pagine Rifornimenti
+    Scorte dei SUOI appartamenti."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True)
+    ids = [str(x) for x in (d.get('ids') or []) if x][:40]
+    quando = (d.get('data') or '').strip() or datetime.date.today().isoformat()
+    if not ids: return jsonify({'ok': False, 'error': 'nessuna voce selezionata'}), 400
+    my = _op_apt_ids(op['notion_id'])
+    fatti, errori = 0, 0
+    for pid in ids:
+        try:
+            page = n_get(pid)
+            pr = page.get('properties', {})
+            cat = ((pr.get('Categoria', {}) or {}).get('select') or {}).get('name')
+            rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
+            if cat != 'Rifornimenti Scorte' or not (set(rel) & my):
+                errori += 1; continue
+            n_patch(pid, {'Portato in appartamento': {'checkbox': True},
+                          'Portato il': {'date': {'start': quando}}})
+            fatti += 1
+        except requests.HTTPError:
+            errori += 1
+    return jsonify({'ok': True, 'confermati': fatti, 'errori': errori, 'data': quando})
 
 @app.route('/api/o/<token>/rifornimento', methods=['POST'])
 def rifornimento(token):

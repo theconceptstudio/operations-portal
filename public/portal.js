@@ -51,7 +51,8 @@ function setPView(v){ PVIEW=v; render(); }
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
 let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
     RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
-    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='';
+    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='',
+    RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='';
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
@@ -108,7 +109,7 @@ async function triggerSync(){
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
-  if(RIF_CARTOPEN || LB.open) return;  // non ricostruire mentre è nel carrello o sfoglia gli allegati
+  if(RIF_CARTOPEN || LB.open || RIF_DSEL.size) return;  // non ricostruire nel carrello, negli allegati o durante una selezione consegne
   const ae=document.activeElement;  // né mentre sta digitando (ricerca / prodotto custom)
   if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
   _refreshing=true;
@@ -681,7 +682,35 @@ function rifDoneClose(){ RIF_DONE=null; render(); }
 function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
 
 /* Cronologia ordini */
-function rifShowStorico(){ RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; render(); if(RIF_STORICO===null) rifLoadStorico(); }
+function rifShowStorico(){ RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); render(); if(RIF_STORICO===null) rifLoadStorico(); }
+function histSetFase(f){ RIF_HFASE=f||null; render(); }
+/* Selezione merce in magazzino -> conferma "portata in appartamento" */
+function rifDSel(id){ if(RIF_DSEL.has(id)) RIF_DSEL.delete(id); else RIF_DSEL.add(id); render(); }
+async function rifConsegna(){
+  const ids=[...RIF_DSEL]; if(!ids.length) return;
+  const dv=(document.getElementById('rifddate')||{}).value||todayISO();
+  toast('Confermo la consegna…');
+  try{
+    const r=await fetch(`${API}/rif-consegna`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ids, data:dv})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    RIF_DSEL=new Set(); RIF_STORICO=null; render(); rifLoadStorico();
+    toast(`${j.confermati} consegn${j.confermati===1?'a':'e'} confermat${j.confermati===1?'a':'e'} in appartamento`);
+  }catch(e){ toast('Non riuscito, riprova'); }
+}
+/* Messaggio pulito per l'operatore di magazzino: ogni pacco -> in che appartamento va */
+function rifWaMagazzino(){
+  const items=(RIF_STORICO||[]).filter(o=>RIF_DSEL.has(o.id));
+  if(!items.length){ toast('Seleziona prima la merce'); return; }
+  const out=[`*📦 CONSEGNE DA FARE · ${items.length}*`,''];
+  items.forEach((o,n)=>{
+    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim()||(o.descrizione||'').trim();
+    out.push(`*${n+1}) → ${o.via}*`);
+    if(prod) out.push(`📦 ${prod}`);
+    out.push('');
+  });
+  window.open('https://wa.me/?text='+encodeURIComponent(out.join('\n').trim()),'_blank','noopener');
+}
 function rifBackCatalogo(){ RIF_VIEW='catalogo'; render(); }
 async function rifLoadStorico(){
   try{
@@ -705,20 +734,24 @@ const RIF_URG_OPT=[['1w','~1 settimana','Urgente'],['2w','~2 settimane','Normale
 const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato':'#3f8f5e','Reso':'#8a6d3b'};
 /* Ciclo di vita di un ordine, come lo vede l'operatore */
 const RIF_FASE={
-  richiesto:  {lbl:'Richiesto',    col:'#9A9183'},
-  ordinato:   {lbl:'Ordine fatto', col:'#3b6ea5'},
-  magazzino:  {lbl:'In magazzino', col:'#b5892e'},
-  consegnato: {lbl:'Consegnato',   col:'#3f8f5e'},
+  richiesto:  {lbl:'Richiesto',                col:'#9A9183'},
+  ordinato:   {lbl:'Ordine fatto · in arrivo', col:'#3b6ea5'},
+  magazzino:  {lbl:'In magazzino',             col:'#b5892e'},
+  consegnato: {lbl:'Consegnato',               col:'#3f8f5e'},
 };
-/* Percorso del pacco: i quattro momenti, con la data quando c'è */
+const RIF_FASE_ORD={magazzino:0, ordinato:1, richiesto:2, consegnato:3};  // prima le cose azionabili
+/* Percorso del pacco: pipeline completa fino alla consegna in appartamento */
 function rifTimeline(o){
   const inCasa = o.luogo==='Appartamento';
-  // La consegna in casa la gestisce la logistica: qui basta sapere dove è arrivato il pacco.
-  const passi=[
-    {k:'richiesto', lbl:'Richiesto',    d:o.richiesto_il},
-    {k:'ordinato',  lbl:'Ordine fatto', d:o.ordinato_il},
-    inCasa ? {k:'consegnato', lbl:'Arrivato in appartamento', d:o.data_consegna}
-           : {k:'magazzino',  lbl:'Arrivato in magazzino',    d:o.arrivo_magazzino||o.data_consegna},
+  const passi = inCasa ? [
+    {lbl:'Richiesto',                  d:o.richiesto_il},
+    {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
+    {lbl:'Consegnato in appartamento', d:o.portato_il||o.data_consegna},
+  ] : [
+    {lbl:'Richiesto',                  d:o.richiesto_il},
+    {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
+    {lbl:'Arrivato in magazzino',      d:o.arrivo_magazzino||o.data_consegna},
+    {lbl:'Portato in appartamento',    d:o.portato_il},
   ];
   return `<div class="rift">${passi.map(p=>{
     const fatto=!!p.d;
@@ -733,27 +766,32 @@ function viewRifornimenti(){
   if(RIF_APTS===null) return `<div class="empty-state">${ic('cart')}<div class="t">Carico…</div></div>`;
   if(!RIF_APTS.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun appartamento assegnato</div>Contatta l'ufficio per essere abilitato agli ordini.</div>`;
 
-  // Cronologia
-  if(RIF_VIEW==='storico') return viewStorico();
+  // Due sezioni chiare: ORDINA (carrello) e MONITORA (stato degli ordini),
+  // con segmented in alto e swipe orizzontale per passare dall'una all'altra.
+  const seg=`<div class="rifseg">
+    <button class="rifsegb ${RIF_VIEW==='catalogo'?'on':''}" onclick="rifGo('catalogo')">${ic('cart')}Ordina</button>
+    <button class="rifsegb ${RIF_VIEW==='storico'?'on':''}" onclick="rifGo('storico')">${ic('truck')}Monitora</button>
+  </div>`;
+  const wrap=inner=>`<div ontouchstart="rifSwS(event)" ontouchend="rifSwE(event)">${seg}${inner}</div>`;
+
+  if(RIF_VIEW==='storico') return wrap(viewStorico());
 
   // Selettore appartamento (se più d'uno e non ancora scelto) — mostriamo la VIA.
   // Con tanti appartamenti (30-40) compare anche una ricerca per via.
   if(!RIF_APT){
     const aptSearch = RIF_APTS.length>6
       ? `<div class="rifsearch">${ic('search')}<input id="rifaptq" placeholder="Cerca la via…" value="${esc(RIF_APTQ)}" oninput="rifAptSearch()"></div>` : '';
-    return `<div class="rifintro">${ic('cart')}<div><b>Cosa manca in casa?</b><span>Scegli l'appartamento, poi aggiungi i prodotti al carrello.</span></div></div>
-      <div class="rifbar"><span class="riflbl">Per quale appartamento?</span>
-        <button class="rifchg" onclick="rifShowStorico()">${ic('history')}Cronologia</button></div>
+    return wrap(`<div class="rifintro">${ic('cart')}<div><b>Cosa manca in casa?</b><span>Scegli l'appartamento, poi aggiungi i prodotti al carrello.</span></div></div>
+      <div class="rifbar"><span class="riflbl">Per quale appartamento?</span></div>
       ${aptSearch}
-      <div class="rifapts" id="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" data-v="${esc(rifNorm(a.via))}" onclick="rifPickApt('${a.id}','${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}</div>`;
+      <div class="rifapts" id="rifapts">${RIF_APTS.map(a=>`<button class="rifaptbtn" data-v="${esc(rifNorm(a.via))}" onclick="rifPickApt('${a.id}','${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}</div>`);
   }
 
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
   const aptCtrl = RIF_APTS.length>1
     ? `<button class="rifaptsel" onclick="rifChangeApt()">${ic('pin')}<b>${esc(RIF_APTVIA)}</b>${ic('chevronD')}<span class="rifaptswap">cambia</span></button>`
     : `<span class="rifha">${ic('pin')}<b>${esc(RIF_APTVIA)}</b></span>`;
-  const head=`<div class="rifhead">${aptCtrl}
-    <button class="rifchg" onclick="rifShowStorico()">${ic('history')}Cronologia</button></div>`;
+  const head=`<div class="rifhead">${aptCtrl}</div>`;
   const searchbar=`<div class="rifsearch">${ic('search')}<input id="rifq" placeholder="Cerca un prodotto…" value="${esc(RIF_Q)}" oninput="rifFilter()"></div>`;
 
   const cat=`<div id="rifcat">${CATALOG.map(g=>{
@@ -783,7 +821,20 @@ function viewRifornimenti(){
   const drawer = RIF_CARTOPEN ? rifDrawer() : '';
   const done = RIF_DONE!=null ? rifDoneOverlay() : '';
 
-  return head+searchbar+cat+custom+custbox+`<div class="riffabsp"></div>`+up+fab+drawer+done;
+  return wrap(head+searchbar+cat+custom+custbox+`<div class="riffabsp"></div>`)+up+fab+drawer+done;
+}
+
+/* Passaggio Ordina <-> Monitora, anche con lo swipe del dito */
+function rifGo(v){ if(v==='storico') rifShowStorico(); else rifBackCatalogo(); }
+let _rifSwX=null,_rifSwY=null;
+function rifSwS(e){ _rifSwX=e.changedTouches[0].clientX; _rifSwY=e.changedTouches[0].clientY; }
+function rifSwE(e){
+  if(_rifSwX==null||RIF_CARTOPEN) { _rifSwX=null; return; }
+  const dx=e.changedTouches[0].clientX-_rifSwX, dy=e.changedTouches[0].clientY-_rifSwY; _rifSwX=null;
+  if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.6){
+    if(dx<0 && RIF_VIEW==='catalogo') rifGo('storico');
+    else if(dx>0 && RIF_VIEW==='storico') rifGo('catalogo');
+  }
 }
 
 function rifDrawer(){
@@ -828,33 +879,47 @@ function rifDoneOverlay(){
     </div></div>`;
 }
 
-/* Cronologia rifornimenti — semplice da leggere, con ricerca e filtro per appartamento */
+/* MONITORA — stato degli ordini: filtri per fase e appartamento, selezione
+   della merce in magazzino e conferma "portata in appartamento". */
 function viewStorico(){
-  const back=`<div class="rifhead"><button class="rifback2" onclick="rifBackCatalogo()">${ic('chevronL')}Torna ai prodotti</button></div>
-    <div class="rifintro">${ic('history')}<div><b>Cronologia rifornimenti</b><span>Gli ordini già inviati, dal più recente. Cerca per capire l'ultima volta che hai ordinato una cosa.</span></div></div>`;
-  if(RIF_STORICO===null) return back+`<div class="empty-state">${ic('history')}<div class="t">Carico…</div></div>`;
-  if(!RIF_STORICO.length) return back+`<div class="empty-state">${ic('info')}<div class="t">Nessun ordine ancora</div>Quando invii un ordine comparirà qui.</div>`;
+  if(RIF_STORICO===null) return `<div class="empty-state">${ic('truck')}<div class="t">Carico gli ordini…</div></div>`;
+  if(!RIF_STORICO.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun ordine ancora</div>Quando invii un ordine comparirà qui.</div>`;
 
-  // filtro per appartamento (chip) — solo se l'operatore ne ha più d'uno
-  const chips = RIF_APTS && RIF_APTS.length>1 ? `<div class="rifhchips">
-    <button class="rifhchip ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutti</button>
+  // filtro appartamento (via)
+  const aptChips = RIF_APTS && RIF_APTS.length>1 ? `<div class="rifhchips">
+    <button class="rifhchip ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutte le vie</button>
     ${RIF_APTS.map(a=>`<button class="rifhchip ${RIF_HAPT===a.via?'on':''}" onclick="histSetApt('${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}
   </div>` : '';
+
+  // filtro per fase, con conteggi calcolati sull'appartamento scelto
+  let base=RIF_STORICO.slice();
+  if(RIF_HAPT) base=base.filter(o=>o.via===RIF_HAPT);
+  const cnt=f=>base.filter(o=>o.fase===f).length;
+  const FCH=[[null,'Tutti',null],['richiesto','Richiesti','#9A9183'],['ordinato','In arrivo','#3b6ea5'],
+             ['magazzino','In magazzino','#b5892e'],['consegnato','Consegnati','#3f8f5e']];
+  const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col])=>{
+    const n=f?cnt(f):base.length;
+    return `<button class="rifhchip ${RIF_HFASE===f?'on':''}" onclick="histSetFase(${f?`'${f}'`:'null'})">
+      ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl} <span class="rifhn">${n}</span></button>`;
+  }).join('')}</div>`;
+
   const search=`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`;
 
-  let list=RIF_STORICO.slice();
-  list.sort((a,b)=>String(b.richiesto_il||b.data||'').localeCompare(String(a.richiesto_il||a.data||'')));
-  if(RIF_HAPT) list=list.filter(o=>o.via===RIF_HAPT);
+  // ordina: prima le cose azionabili (magazzino, poi in arrivo, poi richiesti, consegnati in fondo), dentro per data
+  let list=base.slice();
+  if(RIF_HFASE) list=list.filter(o=>o.fase===RIF_HFASE);
+  list.sort((a,b)=>{
+    const fa=RIF_FASE_ORD[a.fase]??9, fb=RIF_FASE_ORD[b.fase]??9;
+    if(fa!==fb) return fa-fb;
+    return String(b.richiesto_il||b.data||'').localeCompare(String(a.richiesto_il||a.data||''));
+  });
+
   const cards=list.map((o,i)=>{
     let f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
-    if(o.fase==='consegnato') f={lbl:o.luogo==='Appartamento'?'Arrivato in appartamento':'Arrivato in magazzino',col:'#3f8f5e'};
-    else if(o.fase==='magazzino') f={lbl:'Arrivato in magazzino',col:'#3f8f5e'};
-    const data=o.data?dShort(o.data):'';
-    // ordini creati dall'app: elenco prodotti dal Note; ordini vecchi/manuali: titolo (Descrizione)
+    if(o.fase==='consegnato') f={lbl:'Consegnato in appartamento',col:'#3f8f5e'};
     const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
     const detail=prod||(o.descrizione||'').trim();
     const hay=rifNorm(`${o.via} ${detail} ${o.stato||''} ${f.lbl}`);
-    // ricevuta / foto prodotti caricate dall'ufficio: sfogliabili come gli altri allegati
     const key='ord:'+i;
     const alleg=(o.allegati||[]).filter(a=>a&&a.url);
     if(alleg.length) ALLEG[key]=alleg;
@@ -864,19 +929,34 @@ function viewStorico(){
         : a.video
         ? `<button class="thumb vid" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
         : `<button class="thumb" onclick="openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
-    const attesa='';   // niente data di consegna prevista: la gestisce la logistica
-    return `<div class="rifhist" data-h="${esc(hay)}">
-      <div class="rifhisth"><span class="rifha">${ic('pin')}<b>${esc(o.via)}</b></span>
+    // la merce in magazzino si può selezionare per confermare la consegna in casa
+    const selezionabile=o.fase==='magazzino' && o.id;
+    const sel=selezionabile && RIF_DSEL.has(o.id);
+    const selBtn=selezionabile
+      ? `<button class="rifsel ${sel?'on':''}" onclick="rifDSel('${o.id}')" title="Seleziona per confermare la consegna">${sel?ic('check'):''}</button>`
+      : '';
+    return `<div class="rifhist ${sel?'sel':''}" data-h="${esc(hay)}">
+      <div class="rifhisth"><span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
       ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
       ${rifTimeline(o)}
-      ${thumbs}${attesa}
+      ${thumbs}
     </div>`;
   }).join('');
+
   const empty=`<div id="rifhempty" class="empty-state" style="display:none">${ic('search')}<div class="t">Nessun risultato</div>Prova con un'altra parola.</div>`;
   const body = list.length ? `<div class="rifhistlist">${cards}</div>${empty}`
-    : `<div class="empty-state">${ic('info')}<div class="t">Nessun ordine per questo appartamento</div></div>`;
-  return back+chips+search+body;
+    : `<div class="empty-state">${ic('check')}<div class="t">Niente qui</div>Nessun ordine con questi filtri.</div>`;
+
+  // barra conferma consegna: appare quando c'è merce selezionata
+  const dbar = RIF_DSEL.size ? `<div class="selbar"><span>${RIF_DSEL.size} sel.</span>
+    <div class="selacts">
+      <input type="date" id="rifddate" class="rifddt" value="${RIF_DDATE||todayISO()}" onchange="RIF_DDATE=this.value">
+      <button class="selwa" onclick="rifWaMagazzino()">${ic('message')}Al magazzino</button>
+      <button class="selconf" onclick="rifConsegna()">${ic('check')}Portato in appartamento</button>
+    </div></div>` : '';
+
+  return aptChips+faseChips+search+body+`<div class="riffabsp"></div>`+dbar;
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */

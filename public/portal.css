@@ -690,3 +690,24 @@ video.lbmedia{width:100%}
 iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 /* Stato ordine: chip pieno, si legge al volo */
 .rifhstato.pieno{color:#fff;font-weight:600;letter-spacing:.4px}
+
+/* Segmented Ordina / Monitora */
+.rifseg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--white);
+  border:1px solid var(--line-2);border-radius:999px;padding:5px;margin:2px 0 16px}
+.rifsegb{display:flex;align-items:center;justify-content:center;gap:7px;border:none;background:none;
+  border-radius:999px;padding:11px 8px;font-family:var(--body);font-size:14px;color:var(--greige);cursor:pointer}
+.rifsegb .ic{width:16px;height:16px}
+.rifsegb.on{background:var(--ink);color:var(--cream)}
+
+/* Chip fase con pallino e conteggio */
+.rifhchip .rifdot{width:8px;height:8px}
+.rifhn{opacity:.65;font-size:11px}
+
+/* Selezione merce in magazzino */
+.rifsel{width:26px;height:26px;border-radius:50%;border:1.6px solid var(--greige-soft);background:#fff;
+  cursor:pointer;flex:none;display:inline-flex;align-items:center;justify-content:center;color:#fff;margin-right:2px}
+.rifsel .ic{width:15px;height:15px}
+.rifsel.on{background:var(--p-l);border-color:var(--p-l)}
+.rifhist.sel{border-color:var(--p-l);box-shadow:0 0 0 1px var(--p-l)}
+.rifddt{border:1px solid var(--line-2);border-radius:999px;padding:8px 12px;font-family:var(--body);
+  font-size:13px;color:var(--ink);background:#fff;outline:none}
