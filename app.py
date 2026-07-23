@@ -322,7 +322,7 @@ def n_query_db(db_id, body):
     r = _session.post(f'https://api.notion.com/v1/databases/{db_id.replace("-", "")}/query',
                       headers=N_HEADERS, json=body, timeout=30)
     r.raise_for_status()
-    return r.json().get('results', [])
+    return r.json()
 
 @app.route('/api/o/<token>/rif-appartamenti')
 def rif_appartamenti(token):
@@ -351,12 +351,17 @@ def rif_storico(token):
     if not my:
         return jsonify({'ok': True, 'storico': []})
     apt = apt_map()
+    # Paginato: la prima chiamata porta i 40 piu' recenti (apertura veloce),
+    # "Mostra ordini piu' vecchi" richiama con ?cursor= e va indietro nel tempo.
+    q = {'filter': {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
+         'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40}
+    cur = request.args.get('cursor')
+    if cur: q['start_cursor'] = cur
     try:
-        results = n_query_db(DB_EXPENSES, {
-            'filter': {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
-            'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40})
+        dati = n_query_db(DB_EXPENSES, q)
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+    results = dati.get('results', [])
 
     # Prossima pulizia per appartamento = quando si può consegnare: la roba si porta in casa
     # solo quando c'è il check-out con pulizia (l'operatore è già sul posto, casa vuota).
@@ -423,7 +428,8 @@ def rif_storico(token):
             'prossima_consegna': (prossima.get(aid) if (fase != 'consegnato' and luogo != 'Appartamento') else None),
             'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
         })
-    resp = jsonify({'ok': True, 'storico': out})
+    resp = jsonify({'ok': True, 'storico': out,
+                    'next_cursor': dati.get('next_cursor'), 'has_more': bool(dati.get('has_more'))})
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 

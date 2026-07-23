@@ -715,3 +715,9 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 /* Etichetta chiara sulla data di consegna in appartamento */
 .rifddtw{display:flex;flex-direction:column;gap:3px}
 .rifddtw span{font-family:var(--light);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--greige-soft)}
+
+/* Carica il passato a blocchi */
+.rifmore{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;
+  background:var(--white);border:1px solid var(--line-2);border-radius:12px;padding:14px;
+  font-family:var(--body);font-size:14px;color:var(--ink);cursor:pointer}
+.rifmore .ic{width:16px;height:16px;color:var(--greige)}

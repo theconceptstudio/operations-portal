@@ -52,7 +52,7 @@ function setPView(v){ PVIEW=v; render(); }
 let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
     RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
     RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='',
-    RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='';
+    RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='', RIF_CURSOR=null, RIF_HASMORE=false;
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
@@ -712,11 +712,16 @@ function rifWaMagazzino(){
   window.open('https://wa.me/?text='+encodeURIComponent(out.join('\n').trim()),'_blank','noopener');
 }
 function rifBackCatalogo(){ RIF_VIEW='catalogo'; render(); }
-async function rifLoadStorico(){
+async function rifLoadStorico(altri){
   try{
-    const r=await fetch(`${API}/rif-storico`,{cache:'no-store'}); const j=await r.json();
-    RIF_STORICO=(j&&j.ok)?j.storico:[];
-  }catch(_){ RIF_STORICO=[]; }
+    const u=`${API}/rif-storico`+((altri&&RIF_CURSOR)?`?cursor=${encodeURIComponent(RIF_CURSOR)}`:'');
+    if(altri) toast('Carico gli ordini più vecchi…');
+    const r=await fetch(u,{cache:'no-store'}); const j=await r.json();
+    if(j&&j.ok){
+      RIF_STORICO=(altri&&RIF_STORICO)?RIF_STORICO.concat(j.storico):j.storico;
+      RIF_CURSOR=j.next_cursor||null; RIF_HASMORE=!!j.has_more;
+    } else if(!altri) RIF_STORICO=[];
+  }catch(_){ if(!altri) RIF_STORICO=[]; }
   if(TAB==='rifornimenti'&&RIF_VIEW==='storico') render();
 }
 function histSetApt(via){ RIF_HAPT=via||null; render(); }
@@ -955,6 +960,8 @@ function viewStorico(){
   const empty=`<div id="rifhempty" class="empty-state" style="display:none">${ic('search')}<div class="t">Nessun risultato</div>Prova con un'altra parola.</div>`;
   const body = list.length ? `<div class="rifhistlist">${cards}</div>${empty}`
     : `<div class="empty-state">${ic('check')}<div class="t">Niente qui</div>Nessun ordine con questi filtri.</div>`;
+  // il passato completo resta raggiungibile, ma si carica solo quando serve
+  const more = RIF_HASMORE ? `<button class="rifmore" onclick="rifLoadStorico(true)">${ic('history')}Mostra ordini più vecchi</button>` : '';
 
   // barra conferma consegna: appare quando c'è merce selezionata
   const dbar = RIF_DSEL.size ? `<div class="selbar"><span>${RIF_DSEL.size} sel.</span>
@@ -965,7 +972,7 @@ function viewStorico(){
       <button class="selconf" onclick="rifConsegna()">${ic('check')}Consegnato in appartamento</button>
     </div></div>` : '';
 
-  return aptChips+faseChips+search+body+`<div class="riffabsp"></div>`+dbar;
+  return aptChips+faseChips+search+body+more+`<div class="riffabsp"></div>`+dbar;
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */
