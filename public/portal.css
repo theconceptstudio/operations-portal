@@ -384,6 +384,9 @@ svg{display:block}
   .dove .via{font-size:26px}
   .actions{flex-wrap:nowrap}
   .btn{min-width:0}
+  /* Scheda aperta = tutta la riga: cosi' non lascia un buco vuoto accanto a se'
+     quando cresce, e le altre schede scorrono ordinatamente sotto */
+  .grid .icard.open{grid-column:1/-1}
 }
 @media (min-width:1440px){
   .grid{grid-template-columns:1fr 1fr 1fr}
