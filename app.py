@@ -384,8 +384,8 @@ def rif_storico(token):
         magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
         acquisto = ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start')
         luogo = ((pr.get('Luogo di consegna', {}) or {}).get('select') or {}).get('name')
-        portato = bool((pr.get('Portato in appartamento', {}) or {}).get('checkbox'))
-        portato_il = ((pr.get('Portato il', {}) or {}).get('date') or {}).get('start')
+        portato = bool((pr.get('Consegnato in appartamento', {}) or {}).get('checkbox'))
+        portato_il = ((pr.get('Consegnato in appartamento il', {}) or {}).get('date') or {}).get('start')
         ordinato = stato in ('Acquistato', 'Da pagare')
         # Pipeline a 4 fasi, come la vede l'operatore:
         # richiesto -> ordinato (in arrivo) -> magazzino -> consegnato in appartamento.
@@ -447,8 +447,8 @@ def rif_consegna(token):
             rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
             if cat != 'Rifornimenti Scorte' or not (set(rel) & my):
                 errori += 1; continue
-            n_patch(pid, {'Portato in appartamento': {'checkbox': True},
-                          'Portato il': {'date': {'start': quando}}})
+            n_patch(pid, {'Consegnato in appartamento': {'checkbox': True},
+                          'Consegnato in appartamento il': {'date': {'start': quando}}})
             fatti += 1
         except requests.HTTPError:
             errori += 1

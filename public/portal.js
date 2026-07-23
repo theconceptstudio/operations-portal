@@ -751,7 +751,7 @@ function rifTimeline(o){
     {lbl:'Richiesto',                  d:o.richiesto_il},
     {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
     {lbl:'Arrivato in magazzino',      d:o.arrivo_magazzino||o.data_consegna},
-    {lbl:'Portato in appartamento',    d:o.portato_il},
+    {lbl:'Consegnato in appartamento', d:o.portato_il},
   ];
   return `<div class="rift">${passi.map(p=>{
     const fatto=!!p.d;
@@ -827,11 +827,16 @@ function viewRifornimenti(){
 /* Passaggio Ordina <-> Monitora, anche con lo swipe del dito */
 function rifGo(v){ if(v==='storico') rifShowStorico(); else rifBackCatalogo(); }
 let _rifSwX=null,_rifSwY=null;
-function rifSwS(e){ _rifSwX=e.changedTouches[0].clientX; _rifSwY=e.changedTouches[0].clientY; }
+function rifSwS(e){
+  // Niente cambio sezione se il dito parte da un elemento che scorre in orizzontale
+  // (file di filtri, miniature, carrello, campi): scorrere i filtri non deve cambiare pagina.
+  if(e.target.closest('.rifhchips,.thumbs,.lbstrip,.rifurgseg,.selbar,.rifdrawer,.rifcustrow,input,select,textarea')){ _rifSwX=null; return; }
+  _rifSwX=e.changedTouches[0].clientX; _rifSwY=e.changedTouches[0].clientY;
+}
 function rifSwE(e){
   if(_rifSwX==null||RIF_CARTOPEN) { _rifSwX=null; return; }
   const dx=e.changedTouches[0].clientX-_rifSwX, dy=e.changedTouches[0].clientY-_rifSwY; _rifSwX=null;
-  if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.6){
+  if(Math.abs(dx)>90 && Math.abs(dx)>Math.abs(dy)*2){
     if(dx<0 && RIF_VIEW==='catalogo') rifGo('storico');
     else if(dx>0 && RIF_VIEW==='storico') rifGo('catalogo');
   }
@@ -897,10 +902,13 @@ function viewStorico(){
   const cnt=f=>base.filter(o=>o.fase===f).length;
   const FCH=[[null,'Tutti',null],['richiesto','Richiesti','#9A9183'],['ordinato','In arrivo','#3b6ea5'],
              ['magazzino','In magazzino','#b5892e'],['consegnato','Consegnati','#3f8f5e']];
+  // Numeri solo sugli stati ATTIVI (pipeline aperta): "Consegnati" cresce negli anni
+  // e il suo conteggio diventerebbe rumore. La lista carica comunque solo i piu' recenti.
   const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col])=>{
-    const n=f?cnt(f):base.length;
+    const attivo=f&&f!=='consegnato';
+    const n=attivo?` <span class="rifhn">${cnt(f)}</span>`:'';
     return `<button class="rifhchip ${RIF_HFASE===f?'on':''}" onclick="histSetFase(${f?`'${f}'`:'null'})">
-      ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl} <span class="rifhn">${n}</span></button>`;
+      ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${n}</button>`;
   }).join('')}</div>`;
 
   const search=`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`;
@@ -951,7 +959,8 @@ function viewStorico(){
   // barra conferma consegna: appare quando c'è merce selezionata
   const dbar = RIF_DSEL.size ? `<div class="selbar"><span>${RIF_DSEL.size} sel.</span>
     <div class="selacts">
-      <input type="date" id="rifddate" class="rifddt" value="${RIF_DDATE||todayISO()}" onchange="RIF_DDATE=this.value">
+      <label class="rifddtw"><span>Consegnato il</span>
+        <input type="date" id="rifddate" class="rifddt" value="${RIF_DDATE||todayISO()}" onchange="RIF_DDATE=this.value"></label>
       <button class="selwa" onclick="rifWaMagazzino()">${ic('message')}Inoltra al magazzino</button>
       <button class="selconf" onclick="rifConsegna()">${ic('check')}Consegnato in appartamento</button>
     </div></div>` : '';
