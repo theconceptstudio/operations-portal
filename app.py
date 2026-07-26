@@ -353,7 +353,13 @@ def rif_storico(token):
     apt = apt_map()
     # Paginato: la prima chiamata porta i 40 piu' recenti (apertura veloce),
     # "Mostra ordini piu' vecchi" richiama con ?cursor= e va indietro nel tempo.
-    q = {'filter': {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
+    # L'operatore vede la categoria Rifornimenti Scorte + qualunque acquisto di
+    # altre categorie con la spunta "Mostra su app operatore" (es. lampadine in
+    # Manutenzioni che deve sapere che sono arrivate).
+    q = {'filter': {'or': [
+             {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
+             {'property': 'Mostra su app operatore', 'checkbox': {'equals': True}},
+         ]},
          'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40}
     cur = request.args.get('cursor')
     if cur: q['start_cursor'] = cur
@@ -452,8 +458,11 @@ def rif_consegna(token):
             page = n_get(pid)
             pr = page.get('properties', {})
             cat = ((pr.get('Categoria', {}) or {}).get('select') or {}).get('name')
+            mostra = bool((pr.get('Mostra su app operatore', {}) or {}).get('checkbox'))
             rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
-            if cat != 'Rifornimenti Scorte' or not (set(rel) & my):
+            # Confermabile se e' visibile all'operatore: Rifornimenti Scorte OPPURE
+            # marcato "Mostra su app operatore" — e appartiene a un suo appartamento.
+            if (cat != 'Rifornimenti Scorte' and not mostra) or not (set(rel) & my):
                 errori += 1; continue
             n_patch(pid, {'Consegnato in appartamento': {'checkbox': True},
                           'Consegnato in appartamento il': {'date': {'start': quando}}})
