@@ -1082,8 +1082,13 @@ function viewStorico(){
   const empty=`<div id="rifhempty" class="empty-state" style="display:none">${ic('search')}<div class="t">Nessun risultato</div>Prova con un'altra parola.</div>`;
   const body = list.length ? `<div class="rifhistlist">${cards}</div>${empty}`
     : `<div class="empty-state">${ic('check')}<div class="t">Niente qui</div>Nessun ordine con questi filtri.</div>`;
-  // il passato completo resta raggiungibile, ma si carica solo quando serve
-  const more = RIF_HASMORE ? `<button class="rifmore" onclick="rifLoadStorico(true)">${ic('history')}Mostra ordini più vecchi</button>` : '';
+  // Il passato completo si carica solo quando serve. Ma sotto un filtro di fase ATTIVA
+  // (Richiesti / In arrivo / In magazzino) gli articoli aperti sono gia' tutti caricati
+  // (verificato: caricando tutto lo storico il conteggio non cambia), quindi il tasto
+  // "piu' vecchi" porterebbe solo consegnati e li' e' fuorviante -> lo mostro solo su
+  // "Tutti" e "Consegnati".
+  const showMore = RIF_HASMORE && (!RIF_HFASE || RIF_HFASE==='consegnato');
+  const more = showMore ? `<button class="rifmore" onclick="rifLoadStorico(true)">${ic('history')}Mostra ordini più vecchi</button>` : '';
 
   // barra conferma consegna: appare quando c'è merce selezionata
   const dbar = RIF_DSEL.size ? `<div class="selbar"><span class="selinfo">${RIF_DSEL.size} sel.
