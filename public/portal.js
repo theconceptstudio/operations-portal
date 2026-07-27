@@ -83,7 +83,19 @@ function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>
 const CACHE_KEY='tcs_portal_'+TOKEN;
 function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(DATA)); }catch(_){} }
 
+/* Ricorda dove sei (tab + sezione Ordina/Monitora) tra un refresh e l'altro:
+   riaprire l'app o ricaricare la pagina NON ti riporta piu' su "Da fare". */
+const UI_KEY='tcs_ui_'+TOKEN;
+function saveUI(){ try{ localStorage.setItem(UI_KEY, JSON.stringify({tab:TAB, rifView:RIF_VIEW})); }catch(_){} }
+(function restoreUI(){ try{ const s=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
+  if(s.tab==='dafare'||s.tab==='pulizie'||s.tab==='rifornimenti') TAB=s.tab;
+  if(s.rifView==='catalogo'||s.rifView==='storico') RIF_VIEW=s.rifView;
+}catch(_){} })();
+
 async function load(){
+  // Se al refresh sei ripartito sulla tab Rifornimenti, carica i suoi dati
+  // (altrimenti resteresti su "Carico…" perche' setTab non e' stato chiamato).
+  if(TAB==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); }
   // 1. mostra subito l'ultimo stato salvato (apertura istantanea)
   try{ const c=localStorage.getItem(CACHE_KEY); if(c){ DATA=JSON.parse(c); render(); setupAutoRefresh(); } }catch(_){}
   // 2. aggiorna dal server in sottofondo
@@ -110,7 +122,7 @@ async function triggerSync(){
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
-  if(RIF_CARTOPEN || LB.open || RIF_DSEL.size) return;  // non ricostruire nel carrello, negli allegati o durante una selezione consegne
+  if(RIF_CARTOPEN || LB.open || RIF_DSEL.size || RIF_NOTA_OPEN) return;  // non ricostruire nel carrello, allegati, selezione consegne o mentre scrivi una nota
   const ae=document.activeElement;  // né mentre sta digitando (ricerca / prodotto custom)
   if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
   _refreshing=true;
@@ -150,7 +162,7 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
 }
-function setTab(t){ TAB=t; OPEN_CARDS.clear(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
 function setFilter(f){ FILTER=f; OPEN_CARDS.clear(); render(); }
 function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
@@ -714,7 +726,7 @@ function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
 /* Cronologia ordini */
 let RIF_LOADEDMORE=false;
 function rifShowStorico(){
-  RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); RIF_LOADEDMORE=false;
+  RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); RIF_LOADEDMORE=false; saveUI();
   // 1. mostra SUBITO l'ultimo stato salvato (apertura istantanea)…
   if(RIF_STORICO===null){
     try{ const c=localStorage.getItem('tcs_rifsto_'+TOKEN);
@@ -725,6 +737,35 @@ function rifShowStorico(){
   rifLoadStorico();
 }
 function histSetFase(f){ RIF_HFASE=f||null; render(); }
+
+/* Step interno operatore: presenza verificata in magazzino (Supabase, non Notion). */
+async function rifVerifica(id, val){
+  const o=(RIF_STORICO||[]).find(x=>x.id===id); if(o) o.verificato=val;  // ottimistico
+  render();
+  try{
+    const r=await fetch(`${API}/rif-verifica`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ids:[id], verificato:val})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    toast(val?'Segnato: verificato in magazzino':'Verifica tolta');
+  }catch(e){ if(o) o.verificato=!val; render(); toast('Non riuscito, riprova'); }
+}
+/* Nota del magazzino su un ordine: va nelle Note dell'Expense Tracker (Notion) timestampata. */
+let RIF_NOTA_OPEN=null;
+function rifNotaOpen(id){ RIF_NOTA_OPEN = (RIF_NOTA_OPEN===id?null:id); render();
+  if(RIF_NOTA_OPEN){ const t=document.getElementById('rifnm-'+id); if(t) t.focus(); } }
+async function rifNotaSave(id){
+  const t=document.getElementById('rifnm-'+id); const testo=(t&&t.value||'').trim();
+  if(!testo){ toast('Scrivi la nota'); return; }
+  toast('Salvo la nota…');
+  try{
+    const r=await fetch(`${API}/rif-nota-magazzino`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id, nota:testo})});
+    const j=await r.json(); if(!j.ok) throw 0;
+    const o=(RIF_STORICO||[]).find(x=>x.id===id);
+    if(o){ o.note_magazzino=(o.note_magazzino||[]).concat(j.riga); }
+    RIF_NOTA_OPEN=null; render(); toast('Nota salvata');
+  }catch(e){ toast('Non riuscito, riprova'); }
+}
 /* Selezione merce in magazzino -> conferma "portata in appartamento" */
 function rifDSel(id){ if(RIF_DSEL.has(id)) RIF_DSEL.delete(id); else RIF_DSEL.add(id); render(); }
 function rifDSelClear(){ RIF_DSEL=new Set(); render(); toast('Selezione annullata'); }
@@ -762,7 +803,7 @@ function rifWaMagazzino(){
   });
   window.open('https://wa.me/?text='+encodeURIComponent(out.join('\n').trim()),'_blank','noopener');
 }
-function rifBackCatalogo(){ RIF_VIEW='catalogo'; render(); }
+function rifBackCatalogo(){ RIF_VIEW='catalogo'; saveUI(); render(); }
 async function rifLoadStorico(altri){
   try{
     const u=`${API}/rif-storico`+((altri&&RIF_CURSOR)?`?cursor=${encodeURIComponent(RIF_CURSOR)}`:'');
@@ -1005,11 +1046,35 @@ function viewStorico(){
     const selBtn=selezionabile
       ? `<span class="rifsel ${sel?'on':''}">${sel?ic('check'):''}</span>`
       : '';
+    // STEP INTERNO (solo operatore): quando la roba è "in magazzino" l'operatore
+    // chiama il magazzino e spunta "presenza verificata". Non va su Notion.
+    const ver=!!o.verificato;
+    const verifBox=selezionabile
+      ? `<div class="rifverif ${ver?'ok':''}">
+          <button class="rifvchk" onclick="event.stopPropagation();rifVerifica('${o.id}',${ver?'false':'true'})">
+            <span class="rifvbox ${ver?'on':''}">${ver?ic('check'):''}</span>
+            ${ver?'Presenza verificata in magazzino':'Verifica presenza in magazzino'}</button>
+          <button class="rifvnota" onclick="event.stopPropagation();rifNotaOpen('${o.id}')" title="Aggiungi una nota per l'ufficio">${ic('message')}Nota</button>
+        </div>` : '';
+    // note del magazzino (timestampate, arrivano dal campo Note su Notion)
+    const notemag=(o.note_magazzino||[]);
+    const noteHtml=notemag.length
+      ? `<div class="rifnmlist">${notemag.map(n=>`<div class="rifnm">${ic('info')}<span>${esc(n)}</span></div>`).join('')}</div>` : '';
+    const notaInput = (RIF_NOTA_OPEN===o.id)
+      ? `<div class="rifnmform" onclick="event.stopPropagation()">
+          <textarea id="rifnm-${o.id}" rows="2" placeholder="Es. chiamato magazzino: non ancora arrivati…"></textarea>
+          <div class="rifnmacts">
+            <button class="rifnmcancel" onclick="rifNotaOpen('${o.id}')">Annulla</button>
+            <button class="rifnmsave" onclick="rifNotaSave('${o.id}')">${ic('check')}Salva nota</button>
+          </div></div>` : '';
     return `<div class="rifhist ${sel?'sel':''} ${selezionabile?'selettabile':''}" data-h="${esc(hay)}"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
       <div class="rifhisth"><span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
       ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
       ${rifTimeline(o)}
+      ${verifBox}
+      ${noteHtml}
+      ${notaInput}
       ${thumbs}
     </div>`;
   }).join('');

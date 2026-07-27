@@ -648,6 +648,33 @@ video.lbmedia{width:100%}
 .riftp.ok .riftdot{background:var(--p-l)}
 .riftp.ok .riftd{color:var(--ink)}
 
+/* Step interno "verificato in magazzino" + nota del magazzino */
+.rifverif{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+.rifvchk{display:inline-flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;
+  font-family:var(--body);font-size:13px;color:var(--greige-text);padding:0;text-align:left}
+.rifvbox{width:20px;height:20px;border-radius:6px;border:1.6px solid var(--greige-soft);background:#fff;flex:none;
+  display:inline-flex;align-items:center;justify-content:center;color:#fff}
+.rifvbox .ic{width:13px;height:13px}
+.rifverif.ok .rifvchk{color:var(--ink);font-weight:500}
+.rifverif.ok .rifvbox{background:var(--p-l);border-color:var(--p-l)}
+.rifvnota{margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:var(--white);
+  border:1px solid var(--line-2);border-radius:999px;padding:6px 12px;cursor:pointer;
+  font-family:var(--body);font-size:12px;color:var(--ink)}
+.rifvnota .ic{width:13px;height:13px;color:var(--greige)}
+.rifnmlist{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.rifnm{display:flex;align-items:flex-start;gap:7px;background:#f2efe9;border-radius:9px;padding:8px 11px;
+  font-family:var(--light);font-size:12px;color:var(--greige-text);line-height:1.4}
+.rifnm .ic{width:13px;height:13px;color:var(--greige);flex:none;margin-top:2px}
+.rifnmform{margin-top:9px}
+.rifnmform textarea{width:100%;box-sizing:border-box;border:1px solid var(--line-2);border-radius:10px;
+  padding:10px 12px;font-family:var(--body);font-size:14px;color:var(--ink);background:#fff;outline:none;resize:vertical}
+.rifnmacts{display:flex;justify-content:flex-end;gap:8px;margin-top:7px}
+.rifnmcancel{background:none;border:1px solid var(--line-2);border-radius:999px;padding:8px 14px;
+  font-family:var(--body);font-size:13px;color:var(--greige-text);cursor:pointer}
+.rifnmsave{display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:var(--cream);border:none;
+  border-radius:999px;padding:8px 15px;font-family:var(--body);font-size:13px;cursor:pointer}
+.rifnmsave .ic{width:14px;height:14px}
+
 /* Invio riepilogo su WhatsApp dalla selezione multipla */
 .selwa{display:inline-flex;align-items:center;gap:6px;background:#25D366;color:#fff;border:none;
   border-radius:999px;padding:9px 15px;font-family:var(--body);font-size:13px;cursor:pointer;

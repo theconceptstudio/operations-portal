@@ -388,7 +388,12 @@ def rif_storico(token):
             continue
         a = apt.get(rel[0]) if rel else {}
         a = a or {}
-        note = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
+        note_raw = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
+        # Il campo Note contiene l'elenco prodotti ("Prodotti (N): …") e, se il
+        # responsabile magazzino ne ha aggiunte, righe-nota timestampate "[gg/mm HH:MM] …".
+        # Le separo: i prodotti restano puliti, le note magazzino vanno a parte.
+        note = ' '.join(l for l in note_raw.split('\n') if not l.strip().startswith('['))
+        note_magazzino = [l.strip() for l in note_raw.split('\n') if l.strip().startswith('[')]
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
         consegna = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
@@ -433,7 +438,21 @@ def rif_storico(token):
             # finestra di consegna: dal magazzino si porta in casa quando c'è la pulizia
             'prossima_consegna': (prossima.get(aid) if (fase != 'consegnato' and luogo != 'Appartamento') else None),
             'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
+            'note_magazzino': note_magazzino,               # note del responsabile magazzino (timestampate)
+            'verificato': False,                            # riempito sotto dal mirror operatore
         })
+    # Stato "verificato in magazzino": vive solo lato operatore (Supabase op_rif_verifica),
+    # NON su Notion. Lo agganciamo in blocco alle righe appena costruite.
+    if out and SUPABASE_URL and SUPABASE_KEY:
+        try:
+            ids_csv = ','.join('"%s"' % r['id'] for r in out)
+            vrows = sb_get('op_rif_verifica', {'page_id': f'in.({ids_csv})',
+                                               'select': 'page_id,verificato'})
+            vmap = {r['page_id']: bool(r.get('verificato')) for r in vrows}
+            for r in out:
+                r['verificato'] = vmap.get(r['id'], False)
+        except Exception:
+            pass
     resp = jsonify({'ok': True, 'storico': out,
                     'next_cursor': dati.get('next_cursor'), 'has_more': bool(dati.get('has_more'))})
     resp.headers['Cache-Control'] = 'no-store'
@@ -470,6 +489,57 @@ def rif_consegna(token):
         except requests.HTTPError:
             errori += 1
     return jsonify({'ok': True, 'confermati': fatti, 'errori': errori, 'data': quando})
+
+@app.route('/api/o/<token>/rif-verifica', methods=['POST'])
+def rif_verifica(token):
+    """Step interno operatore logistica: 'presenza verificata in magazzino'.
+    Andres dice che la merce e' arrivata in magazzino; l'operatore chiama/controlla
+    e spunta qui che c'e' davvero. Vive SOLO lato operatore (Supabase op_rif_verifica),
+    NON tocca Notion: e' un aiuto per l'operatore, non un dato che serve all'ufficio."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    if not (SUPABASE_URL and SUPABASE_KEY): return jsonify({'ok': False, 'error': 'no-store'}), 500
+    d = request.get_json(force=True)
+    ids = [str(x) for x in (d.get('ids') or []) if x][:60]
+    val = bool(d.get('verificato'))
+    if not ids: return jsonify({'ok': False, 'error': 'nessuna voce'}), 400
+    now_iso = _now_rome().isoformat()
+    rows = [{'page_id': pid, 'verificato': val, 'updated_at': now_iso} for pid in ids]
+    try:
+        r = _session.post(f'{SUPABASE_URL}/rest/v1/op_rif_verifica',
+                          headers=_sb_headers({'Prefer': 'resolution=merge-duplicates'}),
+                          json=rows, timeout=20)
+        r.raise_for_status()
+    except requests.HTTPError:
+        return jsonify({'ok': False, 'error': 'store'}), 500
+    return jsonify({'ok': True, 'verificato': val, 'n': len(ids)})
+
+@app.route('/api/o/<token>/rif-nota-magazzino', methods=['POST'])
+def rif_nota_magazzino(token):
+    """Nota del responsabile magazzino su un ordine (es. 'chiamato magazzino, non
+    arrivati'). Va nel campo Note dell'Expenses Tracker su Notion con data+ora, cosi'
+    l'ufficio la vede e si incrociano i dati (tracciare errori/mancate consegne).
+    L'operatore la rivede perche' rif-storico ripesca le righe-nota dal campo Note."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True)
+    pid = str(d.get('id') or '').strip()
+    testo = (d.get('nota') or '').strip()
+    if not pid or not testo: return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
+    my = _op_apt_ids(op['notion_id'])
+    try:
+        page = n_get(pid)
+        pr = page.get('properties', {})
+        rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
+        if not (set(rel) & my):
+            return jsonify({'ok': False, 'error': 'non autorizzato'}), 403
+        old = ''.join(t.get('plain_text', '') for t in (pr.get('Note', {}) or {}).get('rich_text', []))
+        riga = '[%s] magazzino: %s' % (_now_rome().strftime('%d/%m %H:%M'), testo)
+        nuovo = (old + '\n' + riga) if old.strip() else riga
+        n_patch(pid, {'Note': {'rich_text': [{'text': {'content': nuovo[:1990]}}]}})
+    except requests.HTTPError:
+        return jsonify({'ok': False, 'error': 'notion'}), 500
+    return jsonify({'ok': True, 'riga': riga})
 
 @app.route('/api/o/<token>/rifornimento', methods=['POST'])
 def rifornimento(token):
