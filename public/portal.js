@@ -1059,7 +1059,7 @@ function viewStorico(){
     // note del magazzino (timestampate, arrivano dal campo Note su Notion)
     const notemag=(o.note_magazzino||[]);
     const noteHtml=notemag.length
-      ? `<div class="rifnmlist">${notemag.map(n=>`<div class="rifnm">${ic('info')}<span>${esc(n)}</span></div>`).join('')}</div>` : '';
+      ? `<div class="rifnmlist">${notemag.map(n=>`<div class="rifnmi">${ic('info')}<span>${esc(n)}</span></div>`).join('')}</div>` : '';
     const notaInput = (RIF_NOTA_OPEN===o.id)
       ? `<div class="rifnmform" onclick="event.stopPropagation()">
           <textarea id="rifnm-${o.id}" rows="2" placeholder="Es. chiamato magazzino: non ancora arrivati…"></textarea>
