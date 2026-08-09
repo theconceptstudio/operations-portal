@@ -42,11 +42,12 @@ const ICN = {
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
-let DATA=null, TAB='dafare', FILTER='tutti', SORT='data', SEL=todayISO(), WEEK0=mondayOf(todayISO());
+let DATA=null, TAB='dafare', SEL=todayISO(), WEEK0=mondayOf(todayISO());
 let NOTE_OPEN=null, RESCHED_OPEN=null, SELMODE=false, SELECTED=new Set(), UPLOADS={}, SEL_RESCHED_DATE='';
-let OPEN_APTS=new Set(), OVERDUE_OPEN=false, OPEN_CARDS=new Set(), OPEN_URG=new Set();
-let PVIEW='giorno', LEG_OPEN=false;
-function toggleLeg(){ LEG_OPEN=!LEG_OPEN; render(); }
+// OPEN_APTS = gruppi che l'operatore ha aperto a mano; CLOSED_APTS = quelli che ha
+// richiuso anche se avevano arretrati (di default li apriamo noi).
+let OPEN_APTS=new Set(), CLOSED_APTS=new Set(), OPEN_CARDS=new Set();
+let PVIEW='giorno';
 function setPView(v){ PVIEW=v; render(); }
 
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
@@ -152,6 +153,7 @@ function render(){
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
   const view = TAB==='dafare'?viewDaFare() : TAB==='pulizie'?viewPulizie() : viewRifornimenti();
   document.getElementById('app').innerHTML=
+    sheetFoto()+
     `<div class="tabs"><div class="wrap">
       <button class="tab ${TAB==='dafare'?'on':''}" onclick="setTab('dafare')">${ic('clipboard')}Da fare <span class="n">${c.m+c.t}</span></button>
       <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie</button>
@@ -163,18 +165,31 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
 }
 function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
-function setFilter(f){ FILTER=f; OPEN_CARDS.clear(); render(); }
-function setSort(s){ SORT=s; OPEN_CARDS.clear(); render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
-function toggleApt(k){ if(OPEN_APTS.has(k)) OPEN_APTS.delete(k); else OPEN_APTS.add(k); render(); }
-function toggleOverdue(){ OVERDUE_OPEN=!OVERDUE_OPEN; render(); }
+function toggleApt(k, eraAperto){
+  if(eraAperto){ CLOSED_APTS.add(k); OPEN_APTS.delete(k); }
+  else { OPEN_APTS.add(k); CLOSED_APTS.delete(k); }
+  render();
+}
 function toggleCard(k){
   const opening=!OPEN_CARDS.has(k);
   if(opening) OPEN_CARDS.add(k); else OPEN_CARDS.delete(k);
   render();
-  if(opening){ const i=k.indexOf(':'); fetchAllegati(k.slice(0,i), k.slice(i+1)); }  // allegati freschi (anche dall'ufficio)
+  if(opening){
+    const i=k.indexOf(':'), kind=k.slice(0,i), id=k.slice(i+1);
+    fetchAllegati(kind, id);            // allegati freschi (anche dall'ufficio)
+    segnaLetta(kind, id);               // spegne "istruzioni aggiornate"
+  }
 }
-function toggleUrg(k){ if(OPEN_URG.has(k)) OPEN_URG.delete(k); else OPEN_URG.add(k); render(); }
+/* L'ha letta: il segnale si spegne da solo. Su Notion non cambia niente. */
+function segnaLetta(kind,id){
+  const arr=kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===id);
+  if(!it || !istrNuove(it)) return;
+  it.istruzioni_viste_il=new Date().toISOString();   // subito, senza aspettare il server
+  fetch(`${API}/letta`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind,id})}).catch(()=>{});
+}
 /* Swipe della settimana col dito */
 let _wkX=null;
 function wkTouchStart(e){ _wkX=e.changedTouches[0].clientX; }
@@ -372,14 +387,26 @@ function byPrio(a,b){ return (RANK[a.priorita]??9)-(RANK[b.priorita]??9); }
 
 /* Striscia settimana cliccabile, condivisa Pulizie/Da fare.
    byDay: mappa dataISO -> array (per i puntini). Oggi evidenziato, tasto "Oggi". */
-function weekStrip(byDay){
+function weekStrip(byDay, tuttiItems){
+  // Quando abbiamo l'elenco completo mostriamo il NUMERO di cose per giorno invece del
+  // puntino: "quel venerdì ne scadevano dodici" è un'informazione, un puntino no.
+  let conteggio=null;
+  if(tuttiItems){ conteggio={};
+    tuttiItems.forEach(x=>{ const d=dateOf(x); if(d) conteggio[d]=(conteggio[d]||0)+1; }); }
   let days='';
   for(let i=0;i<7;i++){
     const dISO=addDays(WEEK0,i), d=parseISO(dISO), n=(byDay[dISO]||[]).length;
     const cls=[dISO===SEL?'on':'', dISO===todayISO()?'today':''].join(' ').trim();
+    let sotto;
+    if(conteggio){
+      const tot=conteggio[dISO]||0, scaduto=dISO<todayISO()&&tot;
+      sotto=`<div class="cnt2${tot?(scaduto?' late':''):' none'}">${tot||'0'}</div>`;
+    }else{
+      sotto=n?'<div class="dot"></div>':'<div class="empty"></div>';
+    }
     days+=`<div class="day ${cls}" onclick="pick('${dISO}')">
       <div class="dow">${DOW[d.getDay()]}</div><div class="dnum">${d.getDate()}</div>
-      ${n?'<div class="dot"></div>':'<div class="empty"></div>'}</div>`;
+      ${sotto}</div>`;
   }
   const range=`${dShort(WEEK0)} – ${dShort(addDays(WEEK0,6))}`;
   const oggiBtn = WEEK0!==mondayOf(todayISO())
@@ -389,124 +416,165 @@ function weekStrip(byDay){
     <div class="days" ontouchstart="wkTouchStart(event)" ontouchend="wkTouchEnd(event)">${days}</div>
     <button class="nav" onclick="shiftWeek(1)">${ic('chevronR')}</button></div>`;
 }
-function sectionHTML(title, arr, cls, icon){
-  return `<div class="section"><div class="sechead ${cls||''}">${icon||''}${esc(title)} <span class="num">${arr.length}</span></div>
-    <div class="grid">${arr.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
+
+/* ── DA FARE ──────────────────────────────────────────────────────────
+   Una lista sola. Niente distinzione Manutenzione/Task: per chi lavora sono
+   tutte "cose da fare", l'etichetta diceva solo da quale database di Andres
+   arrivava la riga. Niente filtri né ordinamenti: la struttura risponde già.
+
+   Ordine della pagina:
+     1. Aspettano solo una foto  → lavoro finito, manca la prova
+     2. Da recuperare            → arretrati raggruppati per indirizzo
+     3. Settimana + giorno       → il programma, con gli arretrati che RESTANO
+                                   nel loro giorno (prima sparivano)
+*/
+
+/* L'ufficio scrive due cose diverse nelle istruzioni, e vogliono dire l'opposto:
+   "attesa foto"  → il lavoro è già fatto, manca solo la prova  → corsia foto
+   "fare/inviare foto" → la foto fa parte del lavoro da fare    → resta in lista
+   Regola sul testo, nessun campo nuovo su Notion da compilare. */
+const RE_ATTESA = /\b(in\s+)?attes[ao]\b[^.\n]{0,40}?\b(foto|video|immagin|fotograf)/i;
+const RE_FOTO   = /\b(fare|far|inviare|invia|mandare|manda|scattare|allegare|allega)\b[^.\n]{0,30}?\b(foto|video|fotograf)|📸|📷|🎥/i;
+function vuoleFoto(x){ const s=(x.istruzioni||''); return RE_ATTESA.test(s)||RE_FOTO.test(s); }
+function attendeFoto(x){ return RE_ATTESA.test(x.istruzioni||''); }
+/* Istruzioni riscritte dall'ufficio dopo l'ultima volta che l'operatore ha aperto */
+function istrNuove(x){
+  if(!x.istruzioni_agg_il) return false;
+  if(!x.istruzioni_viste_il) return true;
+  return new Date(x.istruzioni_agg_il) > new Date(x.istruzioni_viste_il);
+}
+function tuttiItems(){
+  return (DATA.issues||[]).map(x=>({...x,_kind:'issue'}))
+    .concat((DATA.tasks||[]).map(x=>({...x,_kind:'task'})));
 }
 
-/* ── DA FARE (manutenzioni + task uniti) ──────────────────────────── */
 function viewDaFare(){
-  const issues=(DATA.issues||[]).map(x=>({...x, _kind:'issue'}));
-  const tasks =(DATA.tasks ||[]).map(x=>({...x, _kind:'task'}));
-  let items=issues.concat(tasks);
-  if(FILTER==='manut') items=items.filter(x=>x._kind==='issue');
-  if(FILTER==='task')  items=items.filter(x=>x._kind==='task');
-
-  const chips=`<div class="filters">
-    <button class="fchip ${FILTER==='tutti'?'on':''}" onclick="setFilter('tutti')">Tutti <span class="n">${issues.length+tasks.length}</span></button>
-    <button class="fchip ${FILTER==='manut'?'on':''}" onclick="setFilter('manut')">${ic('wrench')}Manutenzioni <span class="n">${issues.length}</span></button>
-    <button class="fchip ${FILTER==='task'?'on':''}" onclick="setFilter('task')">${ic('clipboard')}Task <span class="n">${tasks.length}</span></button>
-  </div>`;
-  const ctrl=`<div class="ctrl"><div class="seg">
-      <button class="segbtn ${SORT==='urg'?'on':''}" onclick="setSort('urg')">Urgenza</button>
-      <button class="segbtn ${SORT==='data'?'on':''}" onclick="setSort('data')">Data</button>
-      <button class="segbtn ${SORT==='apt'?'on':''}" onclick="setSort('apt')">Appartamento</button>
-    </div>
-    <button class="vbtn ${SELMODE?'on':''}" onclick="toggleSelMode()">${ic('check')}${SELMODE?'Annulla':'Seleziona'}</button></div>`;
-
-  const leg=`<div class="legwrap ${LEG_OPEN?'open':''}">
-    <button class="legbtn" onclick="toggleLeg()">${ic('info')}Legenda ${ic(LEG_OPEN?'chevronU':'chevronD')}</button>
-    <div class="legitems">
-      <span><i class="legdot" style="background:#b23b2e"></i>Urgente</span>
-      <span><i class="legdot" style="background:#c8792f"></i>Alta</span>
-      <span><i class="legdot" style="background:#3b6ea5"></i>Media</span>
-      <span><i class="legdot" style="background:#3f8f5e"></i>Bassa</span>
-      <span class="legtag late">in ritardo</span>
-      <span class="legtag conf">${ic('check')}confermato</span>
-      <span class="legtag nod">senza data</span>
-    </div></div>`;
+  const items=tuttiItems();
   if(!items.length){
-    return chips+ctrl+leg+`<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>Nessun intervento aperto al momento.</div>`;
+    return `<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>
+      Nessun intervento aperto al momento.</div>`;
   }
   const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
     <div class="selacts">
       <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
-      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()" title="Manda il riepilogo testuale su WhatsApp">${ic('message')}Invia su WhatsApp</button>
-      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()" title="Scarica le foto degli interventi selezionati">${ic('download')}Scarica allegati</button>
+      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()">${ic('message')}Invia su WhatsApp</button>
+      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()">${ic('download')}Scarica allegati</button>
       <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
       <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
     </div></div>` : '';
 
-  const overdue=items.filter(isLate).sort(byPrio);
+  // Il tasto "Seleziona" sta sulla stessa riga della prima intestazione invece che
+  // su una fascia tutta sua: in cima allo schermo lo spazio vale, e lì sopra ci deve
+  // andare la roba da fare, non un comando secondario.
+  const seleziona=`<button class="vbtn selbtn ${SELMODE?'on':''}" onclick="toggleSelMode()">${ic('check')}${SELMODE?'Annulla':'Seleziona'}</button>`;
 
-  let body;
-  if(SORT==='apt'){
-    body=renderByApt(items);
-  }else if(SORT==='data'){
-    body=renderByData(items, overdue);
-  }else{
-    body=renderByUrgency(items);
-  }
-  return chips+ctrl+leg+body+selbar;
+  // 1. aspettano solo una foto (non confermate: se è confermata è chiusa)
+  const attesa = items.filter(x=>!x.confermato_manutentore && attendeFoto(x))
+                      .sort((a,b)=>byPrio(a,b)||(dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'));
+  const chiaveA = new Set(attesa.map(x=>x._kind+':'+x.notion_id));
+  const resto = items.filter(x=>!chiaveA.has(x._kind+':'+x.notion_id));
+
+  // 2. arretrati, raggruppati per indirizzo
+  const arretrati = resto.filter(isLate);
+
+  // il pulsante si appoggia alla prima intestazione presente
+  const foto=corsiaFoto(attesa, attesa.length?seleziona:'');
+  const rec=bloccoRecupero(arretrati, (!attesa.length&&arretrati.length)?seleziona:'');
+  const orfano=(!attesa.length&&!arretrati.length)
+    ? `<div class="ctrl" style="justify-content:flex-end">${seleziona}</div>` : '';
+  return foto + rec + orfano + programmaSettimana(items, resto) + selbar;
 }
 
-/* DATA: banner ritardi (apri/chiudi) → settimana scorribile → giorno scelto */
-function renderByData(items, overdue){
-  const onTime=items.filter(x=>!isLate(x));
-  const byDay={}, undated=[];
-  onTime.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else undated.push(x); });
-  let banner='';
-  if(overdue.length){
-    banner=`<button class="latebanner ${OVERDUE_OPEN?'open':''}" onclick="toggleOverdue()">
-        <span>${ic('info')}${overdue.length} in ritardo</span>${ic(OVERDUE_OPEN?'chevronU':'chevronD')}</button>`;
-    if(OVERDUE_OPEN) banner+=`<div class="grid" style="margin-bottom:22px">${overdue.map(x=>iCard(x,x._kind)).join('')}</div>`;
-  }
-  const list=(byDay[SEL]||[]).slice().sort(byPrio);
-  let day=`<div class="daylbl">${dLong(SEL)}<span class="cnt">${list.length} da fare</span></div>`;
-  day += list.length
-    ? `<div class="grid">${list.map(x=>iCard(x,x._kind)).join('')}</div>`
-    : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
-  if(undated.length) day += `<div class="nodate-sec">
-    <div class="nodate-hd">${ic('info')}Senza data <span class="num">${undated.length}</span>
-      <span class="nodate-sub">da calendarizzare: chiedi la data all'ufficio</span></div>
-    <div class="grid">${undated.map(x=>iCard(x,x._kind)).join('')}</div></div>`;
-  return banner + weekStrip(byDay) + day;
-}
-
-/* URGENZA: categorie per priorità (accordion). Tap → esplode. Dentro: ritardi prima, poi data */
-function renderByUrgency(items){
-  const groups=[['Very High','Urgente'],['High','Alta'],['Medium','Media'],['Low','Bassa'],['_none','Senza priorità']];
-  const sortInside=(a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
-    return (dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); };
-  return groups.map(([k,lbl])=>{
-    const arr=items.filter(x=> k==='_none' ? !P_COLOR[x.priorita] : x.priorita===k).sort(sortInside);
-    if(!arr.length) return '';
-    const c=k==='_none'?'#9A9183':P_COLOR[k];
-    const lateN=arr.filter(isLate).length;
-    const open=OPEN_URG.has(k);
-    const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
-    const head=`<button class="apthead ${open?'open':''}" onclick="toggleUrg('${k}')">
-        <span class="aptname"><span class="ipdot" style="background:${c}"></span><b style="font-family:var(--body);font-size:15px;color:${c}">${lbl}</b></span>
-        <span class="aptmeta">${badge}<span class="aptn">${arr.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
-    return `<div class="aptgroup">${head}${open?`<div class="grid aptbody">${arr.map(x=>iCard(x,x._kind)).join('')}</div>`:''}</div>`;
+function corsiaFoto(arr, extra){
+  if(!arr.length) return '';
+  const righe=arr.map((x,i)=>{
+    const key=x._kind+':'+x.notion_id, c=P_COLOR[x.priorita]||'#9A9183';
+    const d=dateOf(x), l=isLate(x);
+    if(OPEN_CARDS.has(key)) return iCard(x,x._kind);
+    return `<div class="grow${i===0?' first':''}${l?' late':''}">
+      <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
+      <div class="gmain" onclick="toggleCard('${key}')">
+        <div class="gtitle">${esc(titoloDi(x))}</div>
+        <div class="gmeta"><span class="gtag via">${esc(x.indirizzo||x.appartamento||'—')}</span>
+          ${l?`<span class="gtag foto">ferma da ${daysBetween(d,todayISO())}g</span>`:''}</div>
+      </div>
+      <button class="btn foto minif" onclick="pickFoto('${x._kind}','${x.notion_id}')">
+        ${ic('camera')}Foto</button></div>`;
   }).join('');
+  return `<div class="blockrow"><div class="blockhd foto">${ic('camera')}Aspettano solo una foto
+      <span class="num">${arr.length}</span></div>${extra||''}</div>
+    <div class="aptgroup fotog">${righe}</div><div class="rule"></div>`;
 }
 
-/* APPARTAMENTO: accordion — lista case con conteggio + ritardi, tap per espandere */
-function renderByApt(items){
+function bloccoRecupero(arr, extra){
+  if(!arr.length) return '';
   const byApt={};
-  items.forEach(x=>{ const k=x.appartamento||'—'; (byApt[k]=byApt[k]||[]).push(x); });
-  return Object.keys(byApt).sort().map(apt=>{
-    const lst=byApt[apt].sort((a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1; return byPrio(a,b); });
-    const via=lst[0].indirizzo||apt;
-    const lateN=lst.filter(isLate).length;
-    const open=OPEN_APTS.has(apt);
-    const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
-    const head=`<button class="apthead ${open?'open':''}" onclick="toggleApt('${apt.replace(/'/g,"\\'")}')">
-        <span class="aptname">${ic('pin')}<b>${esc(via)}</b>${via!==apt?`<span class="aptsub">${esc(apt)}</span>`:''}</span>
-        <span class="aptmeta">${badge}<span class="aptn">${lst.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
-    return `<div class="aptgroup">${head}${open?`<div class="grid aptbody">${lst.map(x=>iCard(x,x._kind)).join('')}</div>`:''}</div>`;
-  }).join('');
+  arr.forEach(x=>{ const k=x.appartamento||'—'; (byApt[k]=byApt[k]||[]).push(x); });
+  // gli indirizzi con più arretrati vengono prima: è lì che conviene andare
+  const ordine=Object.keys(byApt).sort((p,q)=>byApt[q].length-byApt[p].length || p.localeCompare(q));
+  const gruppi=ordine.map(k=>gruppoApt(k, byApt[k], true)).join('');
+  return `<div class="blockrow"><div class="blockhd hot">${ic('bolt')}Da recuperare
+      <span class="num">${arr.length}</span></div>${extra||''}</div>
+    ${gruppi}<div class="rule"></div>`;
+}
+
+/* Un indirizzo con sotto le sue cose. La via è scritta UNA volta qui in testa:
+   nelle righe sotto sparisce, così il titolo del lavoro diventa la voce principale. */
+function gruppoApt(apt, lst, apriDefault){
+  lst=lst.slice().sort((a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
+    return byPrio(a,b)||(dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); });
+  const via=lst[0].indirizzo||apt;
+  const lateN=lst.filter(isLate).length;
+  const forzato=OPEN_APTS.has(apt), chiuso=CLOSED_APTS.has(apt);
+  const open = chiuso ? false : (forzato || apriDefault);
+  const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
+  const head=`<button class="apthead ${open?'open':''}" onclick="toggleApt('${apt.replace(/'/g,"\\'")}',${open})">
+      <span class="aptname">${ic('pin')}<b>${esc(via)}</b>
+        ${via!==apt?`<span class="aptsub">${esc(apt)}</span>`:''}</span>
+      <span class="aptmeta">${badge}<span class="aptn">${lst.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
+  return `<div class="aptgroup${lateN?' hot':''}">${head}${open?lst.map((x,i)=>rigaItem(x,i===0)).join(''):''}</div>`;
+}
+
+/* Riga dentro un gruppo. Se è aperta diventa la scheda completa. */
+function rigaItem(x, first){
+  const key=x._kind+':'+x.notion_id;
+  if(OPEN_CARDS.has(key) || SELMODE) return iCard(x,x._kind);
+  const c=P_COLOR[x.priorita]||'#9A9183', d=dateOf(x), l=isLate(x);
+  const tags=[
+    vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}con foto</span>`:'',
+    istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
+    x.confermato_manutentore?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
+  ].filter(Boolean).join('');
+  return `<div class="grow${first?' first':''}${l?' late':''}" onclick="toggleCard('${key}')">
+    <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
+    <div class="gmain"><div class="gtitle">${esc(titoloDi(x))}</div>
+      ${tags?`<div class="gmeta">${tags}</div>`:''}</div>
+    <div class="gright"><span class="gdue${l?' late':''}">${
+      d ? (l ? daysBetween(d,todayISO())+'g fa' : dShort(d)) : 'senza data'
+    }</span>${ic('chevronD')}</div></div>`;
+}
+function titoloDi(x){ return x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task'); }
+
+/* Settimana + giorno scelto. Gli arretrati RESTANO nel loro giorno: prima venivano
+   tolti e il giorno risultava vuoto anche se ci scadevano dodici cose. */
+function programmaSettimana(tutti, resto){
+  const byDay={}, senzaData=[];
+  resto.forEach(x=>{ const d=dateOf(x); if(d)(byDay[d]=byDay[d]||[]).push(x); else senzaData.push(x); });
+  const lista=(byDay[SEL]||[]).slice().sort((a,b)=>{
+    if(isLate(a)!==isLate(b)) return isLate(a)?-1:1; return byPrio(a,b); });
+  const byAptGiorno={};
+  lista.forEach(x=>{ const k=x.appartamento||'—'; (byAptGiorno[k]=byAptGiorno[k]||[]).push(x); });
+  const giorno = lista.length
+    ? Object.keys(byAptGiorno).sort().map(k=>gruppoApt(k, byAptGiorno[k], true)).join('')
+    : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
+  const nod = senzaData.length ? `<div class="nodate-sec">
+      <div class="nodate-hd">${ic('info')}Senza data <span class="num">${senzaData.length}</span>
+        <span class="nodate-sub">da calendarizzare: chiedi la data all'ufficio</span></div>
+      ${Object.entries(senzaData.reduce((m,x)=>{const k=x.appartamento||'—';(m[k]=m[k]||[]).push(x);return m;},{}))
+        .map(([k,v])=>gruppoApt(k,v,true)).join('')}</div>` : '';
+  return weekStrip(byDay, tutti)
+    + `<div class="daylbl">${dLong(SEL)}<span class="cnt">${lista.length} da fare</span></div>`
+    + giorno + nod;
 }
 
 /* ── PULIZIE ───────────────────────────────────────────────────────── */
@@ -1114,43 +1182,51 @@ function iCard(x,kind){
   if(dataRaw){ dataLbl=dLong(dataRaw); if(!conf && dataRaw<todayISO()){ late=true; ritardo=daysBetween(dataRaw,todayISO()); } }
   const via=x.indirizzo||x.appartamento;
   const id=x.notion_id;
-  const tipoLbl=kind==='issue'?'Manutenzione':'Task';
-  // Stesso riepilogo della selezione multipla: titolo, via, data, priorità e istruzioni complete
   const waTarget=OFFICE_WA?`https://wa.me/${OFFICE_WA}`:'https://wa.me/';
   const wa=`${waTarget}?text=${encodeURIComponent(waTestoInterventi([Object.assign({},x,{_kind:kind,_key:kind+':'+id})]))}`;
   const istr=(x.istruzioni||'').trim();
-  const tbadge=kind==='issue'
-    ? `<span class="tbadge">${ic('wrench')}Manutenzione</span>`
-    : `<span class="tbadge">${ic('clipboard')}Task</span>`;
   const key=kind+':'+id;
   const sel=SELMODE && SELECTED.has(key);
   const open=!SELMODE && OPEN_CARDS.has(key);
+  const nuove=istrNuove(x);
   const dueBadge = dataRaw
-    ? `<span class="idue ${late?'late':''}">${ic('calendar')}${esc(dShort(dataRaw))}${late?' · scaduta':''}</span>`
-    : (conf?'':`<span class="idue nodate">${ic('calendar')}senza data</span>`);
-  const lateChip = late?`<span class="latechip">${ritardo}g in ritardo</span>`:'';
-  const statusChip = conf ? `<span class="confchip">${ic('check')}confermato</span>` : lateChip;
-  // Testata compatta (sempre): pallino priorità · via · intervento · scadenza
+    ? `<span class="idue ${late?'late':''}">${late?ritardo+'g fa':esc(dShort(dataRaw))}</span>`
+    : (conf?'':`<span class="idue nodate">senza data</span>`);
+  // In selezione multipla la via serve (si vedono card di case diverse insieme);
+  // dentro un gruppo no, sta già scritta nell'intestazione dell'indirizzo.
+  const tags=[
+    conf?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
+    late&&!conf?`<span class="gtag late">${ritardo}g in ritardo</span>`:'',
+    vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}${attendeFoto(x)?'aspetta la foto':'con foto'}</span>`:'',
+    nuove?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
+    SELMODE?`<span class="gtag via">${esc(via||'—')}</span>`:'',
+  ].filter(Boolean).join('');
+  // Testata: il LAVORO è la riga grande, non l'indirizzo.
   const head=`<div class="ihead" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:`onclick="toggleCard('${key}')"`}>
       ${SELMODE?`<span class="selbox">${sel?ic('check'):''}</span>`:`<span class="ipdot" style="background:${pc}" title="${esc(plbl)}"></span>`}
       <div class="imain">
-        <div class="ivia">${esc(via||'—')}</div>
-        <div class="isub">${statusChip}${esc(titolo)}</div>
+        <div class="ititolo">${esc(titolo)}</div>
+        ${tags?`<div class="gmeta">${tags}</div>`:''}
       </div>
       <div class="iright">${dueBadge}${SELMODE?'':ic(open?'chevronU':'chevronD')}</div>
     </div>`;
   // Dettaglio (solo quando espansa)
+  // Le ISTRUZIONI per prime: sono l'unico motivo per cui apre la scheda.
+  // Priorità e stato erano tre righe di servizio che le spingevano in basso
+  // ("Stato: Calendarizzato" poi non vuol dire niente per chi deve avvitare un gommino).
+  const wantFoto=vuoleFoto(x), aspetta=attendeFoto(x);
   const body = open ? `<div class="ibody">
-      ${x.appartamento && x.appartamento!==via?`<div class="meta">${ic('pin')}${esc(x.appartamento)}</div>`:''}
-      ${plbl?`<div class="meta">${ic('info')}Priorità: <b style="color:${pc}">${esc(plbl)}</b></div>`:''}
-      ${x.stato?`<div class="meta">${ic('info')}Stato: <b>${esc(x.stato)}</b></div>`:''}
-      ${istr?`<div class="istr"><span class="lbl">${ic('info')}Istruzioni operatore</span>${esc(istr)}</div>`:''}
-      ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Le tue note</span>${esc(x.note_operatore.trim())}</div>`:''}
+      ${istr?`<div class="istr ${nuove?'nuova':''}"><span class="lbl">${ic('info')}${
+        nuove?'Istruzioni aggiornate dall\'ufficio':'Istruzioni operatore'}</span>${esc(istr)}</div>`:''}
+      ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Quello che hai scritto tu</span>${esc(x.note_operatore.trim())}</div>`:''}
       ${allegatiBlock(key)}
       <div class="actions">
-        <button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`conferma('${kind}','${id}')`}" title="${conf?'Clicca per riattivare':''}">
-          ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
-        <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>
+        ${aspetta&&!conf
+          ? `<button class="btn foto grande" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Manda la foto</button>
+             <button class="btn" onclick="conferma('${kind}','${id}')">${ic('check')}Fatto</button>`
+          : `<button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`chiediFoto('${kind}','${id}',${wantFoto})`}" title="${conf?'Clicca per riattivare':''}">
+               ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
+             <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>`}
         ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
       </div>
       ${NOTE_OPEN===key
@@ -1277,7 +1353,33 @@ function paintLB(){
 
 /* Conferma con finestra di annullamento (5s). Scrive su Notion solo se non annullato. */
 let PENDING=null;
-function conferma(kind,id){
+/* Promemoria foto: compare SOLO dove la foto serve davvero. Se uscisse ogni volta,
+   dopo tre conferme lo chiuderebbe d'istinto e non servirebbe più a niente.
+   Si può saltare: se lo salta resta scritto nelle note che ha chiuso senza prova. */
+let FOTO_ASK=null;
+function chiediFoto(kind,id,wantFoto){
+  if(!wantFoto){ conferma(kind,id); return; }
+  FOTO_ASK={kind,id}; render();
+}
+function chiudiChiediFoto(){ FOTO_ASK=null; render(); }
+function fotoDaSheet(){ const a=FOTO_ASK; FOTO_ASK=null; render(); if(a) pickFoto(a.kind,a.id); }
+function confermaSenzaFoto(){ const a=FOTO_ASK; FOTO_ASK=null; render(); if(a) conferma(a.kind,a.id,true); }
+function sheetFoto(){
+  if(!FOTO_ASK) return '';
+  const arr=FOTO_ASK.kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===FOTO_ASK.id);
+  const titolo=it?(it.descrizione||it.nome||'questo intervento'):'questo intervento';
+  return `<div class="sheetwrap" onclick="chiudiChiediFoto()">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="st">Hai la foto?</div>
+      <p class="sp">Per «${esc(titolo)}» l'ufficio aspetta una foto. Puoi mandarla adesso oppure saltare.</p>
+      <div class="sacts">
+        <button class="btn ok" onclick="fotoDaSheet()">${ic('camera')}Scatta o scegli</button>
+        <button class="skip" onclick="confermaSenzaFoto()">Salta</button>
+      </div></div></div>`;
+}
+
+function conferma(kind,id,senzaFoto){
   if(PENDING) commitPending();                 // se c'è già un pending, lo confermo subito
   const arr=kind==='issue'?DATA.issues:DATA.tasks;
   const it=(arr||[]).find(x=>x.notion_id===id); if(!it) return;
@@ -1288,14 +1390,14 @@ function conferma(kind,id){
     `<button class="undo-btn" onclick="undoConferma()">${ic('chevronL')}Annulla ${sec}</button>`; };
   paint(); t.classList.add('show','undo');
   const iv=setInterval(()=>{ sec--; if(sec<=0){ commitPending(); } else paint(); },1000);
-  PENDING={kind,id,it,iv};
+  PENDING={kind,id,it,iv,senzaFoto:!!senzaFoto};
 }
 function commitPending(){
   if(!PENDING) return;
   const p=PENDING; PENDING=null; clearInterval(p.iv);
   const t=document.getElementById('toast'); t.classList.remove('show','undo');
   fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({kind:p.kind,id:p.id})})
+    body:JSON.stringify({kind:p.kind,id:p.id,senza_foto:p.senzaFoto})})
     .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; if(j.note_operatore){ p.it.note_operatore=j.note_operatore; render(); } })
     .catch(()=>{ p.it.confermato_manutentore=false; render(); toast('Conferma non riuscita, riprova.'); });
 }

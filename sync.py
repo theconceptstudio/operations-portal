@@ -139,6 +139,29 @@ def n_patch(page_id, props):
     _session.patch(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS,
                    json={'properties': props}, timeout=20).raise_for_status()
 
+def _segna_istruzioni_cambiate(table, rows):
+    """Confronta il testo delle istruzioni col giro precedente. Se l'ufficio l'ha riscritto,
+    segna la data del cambio: il portale mostra 'istruzioni aggiornate' finché l'operatore
+    non riapre la scheda. Le righe nuove non sono 'aggiornate': è la prima volta che le vede."""
+    prev = sb_map(table, 'notion_id,istruzioni_hash,istruzioni_agg_il,istruzioni_viste_il')
+    n = 0
+    for row in rows:
+        testo = (row.get('istruzioni') or '').strip()
+        h = hashlib.sha1(testo.encode('utf-8')).hexdigest() if testo else ''
+        p = prev.get(row['notion_id'])
+        row['istruzioni_hash'] = h
+        if p is None:
+            continue                                   # riga nuova: niente da segnalare
+        row['istruzioni_viste_il'] = p.get('istruzioni_viste_il')
+        if p.get('istruzioni_hash') != h and testo:
+            row['istruzioni_agg_il'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            n += 1
+        else:
+            row['istruzioni_agg_il'] = p.get('istruzioni_agg_il')
+    if n: print(f'{table}: {n} istruzioni riscritte dall\'ufficio')
+    return n
+
+
 def _reset_confermato_su_spostamento(table, rows, date_key):
     """Se una task/issue era 'Confermato dal manutentore' e la sua data è stata spostata (dall'ufficio
     su Notion), togli la conferma: torna 'da fare' per l'operatore. Confronta la data col mirror precedente."""
@@ -294,6 +317,7 @@ def sync_issues():
             'confermato_il': conf_il,
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
+    _segna_istruzioni_cambiate('op_issues', rows)
     _reset_confermato_su_spostamento('op_issues', rows, 'data_intervento')
     n = sb_upsert('op_issues', rows)
     rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows])
@@ -329,6 +353,7 @@ def sync_tasks():
             'confermato_il': date_start(pr.get('Confermato il')),
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
+    _segna_istruzioni_cambiate('op_tasks', rows)
     _reset_confermato_su_spostamento('op_tasks', rows, 'due_date')
     n = sb_upsert('op_tasks', rows)
     rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows])

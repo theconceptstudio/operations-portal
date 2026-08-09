@@ -157,8 +157,9 @@ def op_data(token):
     start = (today - datetime.timedelta(days=21)).isoformat()   # finestra: pulizie recenti + prossime
     end   = (today + datetime.timedelta(days=60)).isoformat()
     PCOLS = 'notion_id,appartamento_notion_id,data,tipo,stato,inizio,fine,deposito,late_checkout,early_checkin'
-    ICOLS = 'notion_id,descrizione,appartamento_notion_id,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time'
-    TCOLS = 'notion_id,nome,appartamento_notion_id,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time'
+    AGG   = ',istruzioni_agg_il,istruzioni_viste_il'   # segnale 'istruzioni aggiornate'
+    ICOLS = 'notion_id,descrizione,appartamento_notion_id,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time' + AGG
+    TCOLS = 'notion_id,nome,appartamento_notion_id,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time' + AGG
     gp = lambda: sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}',
         'and': f'(data.gte.{start},data.lte.{end})', 'select': PCOLS, 'order': 'data.asc'})
     gi = lambda: sb_get('op_issues', {'operatore_notion_id': f'eq.{oid}', 'select': ICOLS, 'order': 'data_intervento.asc'})
@@ -199,12 +200,38 @@ def conferma(token):
         # Traccia conferma/riattivazione anche nelle Note operatore (con data e ora)
         nuova_nota = None
         try:
-            nuova_nota = _append_nota(item_id, table, '✅ Intervento confermato' if valore else '↩︎ Riaperta')
+            # senza_foto: ha confermato saltando il promemoria della foto. Non lo blocchiamo,
+            # ma resta scritto: così l'ufficio sa che manca la prova senza doverla rincorrere.
+            testo = ('✅ Intervento confermato' if valore else '↩︎ Riaperta')
+            if valore and d.get('senza_foto'):
+                testo = '✅ Intervento confermato (senza foto)'
+            nuova_nota = _append_nota(item_id, table, testo)
         except requests.HTTPError:
             pass
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'note_operatore': nuova_nota})
+
+@app.route('/api/o/<token>/letta', methods=['POST'])
+def letta(token):
+    """L'operatore ha aperto la scheda: spegne il segnale 'istruzioni aggiornate'.
+    Sta solo sul mirror, su Notion non cambia niente."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True) or {}
+    item_id = (d.get('id') or '').strip()
+    if not item_id: return jsonify({'ok': False, 'error': 'id mancante'}), 400
+    table = 'op_tasks' if d.get('kind') == 'task' else 'op_issues'
+    try:
+        _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
+                       headers=_sb_headers({'Prefer': 'return=minimal'}),
+                       params={'notion_id': f'eq.{item_id}'},
+                       json={'istruzioni_viste_il': datetime.datetime.now(
+                             datetime.timezone.utc).isoformat()}, timeout=20)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True})
+
 
 @app.route('/api/o/<token>/nota', methods=['POST'])
 def nota(token):
@@ -707,7 +734,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20260809">
+<link rel=stylesheet href="/portal.css?v=20260809b">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -725,7 +752,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20260809"></script>
+<script src="/portal.js?v=20260809b"></script>
 </body></html>"""
 
 if __name__ == '__main__':
