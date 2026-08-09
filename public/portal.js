@@ -454,14 +454,18 @@ function viewDaFare(){
     return `<div class="empty-state">${ic('check')}<div class="t">Tutto in ordine</div>
       Nessun intervento aperto al momento.</div>`;
   }
-  const selbar = SELMODE ? `<div class="selbar"><span>${SELECTED.size} sel.</span>
-    <div class="selacts">
+  const n=SELECTED.size, off=n?'':'disabled';
+  const selbar = SELMODE ? `<div class="selbar">
+      <div class="selhead"><span class="seln">${n?`${n} selezionat${n===1?'a':'e'}`:'Tocca le cose da confermare'}</span>
+        <button class="selx" onclick="toggleSelMode()">${ic('close')}Chiudi</button></div>
       <input type="date" id="selresched" class="rsc-hidden" onchange="reschedMultiPicked(this.value)">
-      <button class="selwa" ${SELECTED.size?'':'disabled'} onclick="inviaWaSelezione()">${ic('message')}Invia su WhatsApp</button>
-      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="preparaAllegati()">${ic('download')}Scarica allegati</button>
-      <button class="selconf s2" ${SELECTED.size?'':'disabled'} onclick="pickReschedMulti()">${ic('calendar')}Chiedi cambio data</button>
-      <button class="selconf" ${SELECTED.size?'':'disabled'} onclick="confermaMulti()">${ic('check')}Conferma</button>
-    </div></div>` : '';
+      <div class="selgrid">
+        <button class="selwa" ${off} onclick="inviaWaSelezione()">${ic('message')}WhatsApp</button>
+        <button class="selconf s2" ${off} onclick="preparaAllegati()">${ic('download')}Allegati</button>
+        <button class="selconf s2" ${off} onclick="pickReschedMulti()">${ic('calendar')}Cambio data</button>
+      </div>
+      <button class="selconf primaria" ${off} onclick="confermaMulti()">${ic('check')}Conferma${n?` ${n}`:''}</button>
+    </div>` : '';
 
   // Il tasto "Seleziona" sta sulla stessa riga della prima intestazione invece che
   // su una fascia tutta sua: in cima allo schermo lo spazio vale, e lì sopra ci deve
@@ -490,8 +494,8 @@ function corsiaFoto(arr, extra){
   const righe=arr.map((x,i)=>{
     const key=x._kind+':'+x.notion_id, c=P_COLOR[x.priorita]||'#9A9183';
     const d=dateOf(x), l=isLate(x);
-    if(OPEN_CARDS.has(key)) return iCard(x,x._kind);
-    return `<div class="grow${i===0?' first':''}${l?' late':''}">
+    if(OPEN_CARDS.has(key)) return iCard(x,x._kind,true,false);
+    return `<div class="grow${i===0?' first':''}">
       <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
       <div class="gmain" onclick="toggleCard('${key}')">
         <div class="gtitle">${esc(titoloDi(x))}</div>
@@ -513,7 +517,7 @@ function bloccoRecupero(arr, extra){
   arr.forEach(x=>{ const k=x.appartamento||'—'; (byApt[k]=byApt[k]||[]).push(x); });
   // gli indirizzi con più arretrati vengono prima: è lì che conviene andare
   const ordine=Object.keys(byApt).sort((p,q)=>byApt[q].length-byApt[p].length || p.localeCompare(q));
-  const gruppi=ordine.map(k=>gruppoApt(k, byApt[k], true)).join('');
+  const gruppi=ordine.map(k=>gruppoApt(k, byApt[k], true, false)).join('');
   return `<div class="blockrow"><div class="blockhd hot">${ic('bolt')}Da recuperare
       <span class="num">${arr.length}</span></div>${extra||''}</div>
     ${gruppi}<div class="rule"></div>`;
@@ -521,7 +525,7 @@ function bloccoRecupero(arr, extra){
 
 /* Un indirizzo con sotto le sue cose. La via è scritta UNA volta qui in testa:
    nelle righe sotto sparisce, così il titolo del lavoro diventa la voce principale. */
-function gruppoApt(apt, lst, apriDefault){
+function gruppoApt(apt, lst, apriDefault, segnaRitardo){
   lst=lst.slice().sort((a,b)=>{ if(isLate(a)!==isLate(b)) return isLate(a)?-1:1;
     return byPrio(a,b)||(dateOf(a)||'9999').localeCompare(dateOf(b)||'9999'); });
   const via=lst[0].indirizzo||apt;
@@ -533,20 +537,20 @@ function gruppoApt(apt, lst, apriDefault){
       <span class="aptname">${ic('pin')}<b>${esc(via)}</b>
         ${via!==apt?`<span class="aptsub">${esc(apt)}</span>`:''}</span>
       <span class="aptmeta">${badge}<span class="aptn">${lst.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
-  return `<div class="aptgroup${lateN?' hot':''}">${head}${open?lst.map((x,i)=>rigaItem(x,i===0)).join(''):''}</div>`;
+  return `<div class="aptgroup${lateN?' hot':''}">${head}${open?lst.map((x,i)=>rigaItem(x,i===0,segnaRitardo!==false)).join(''):''}</div>`;
 }
 
 /* Riga dentro un gruppo. Se è aperta diventa la scheda completa. */
-function rigaItem(x, first){
+function rigaItem(x, first, segnaRitardo){
   const key=x._kind+':'+x.notion_id;
-  if(OPEN_CARDS.has(key) || SELMODE) return iCard(x,x._kind);
+  if(OPEN_CARDS.has(key) || SELMODE) return iCard(x,x._kind,true,segnaRitardo);
   const c=P_COLOR[x.priorita]||'#9A9183', d=dateOf(x), l=isLate(x);
   const tags=[
     vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}con foto</span>`:'',
     istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
     x.confermato_manutentore?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
   ].filter(Boolean).join('');
-  return `<div class="grow${first?' first':''}${l?' late':''}" onclick="toggleCard('${key}')">
+  return `<div class="grow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" onclick="toggleCard('${key}')">
     <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
     <div class="gmain"><div class="gtitle">${esc(titoloDi(x))}</div>
       ${tags?`<div class="gmeta">${tags}</div>`:''}</div>
@@ -1173,7 +1177,7 @@ function viewStorico(){
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */
-function iCard(x,kind){
+function iCard(x,kind,dentro,segnaRitardo){
   const pc=P_COLOR[x.priorita]||'#9A9183';
   const plbl=P_LBL[x.priorita]||x.priorita||'';
   const titolo=kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task');
@@ -1195,12 +1199,13 @@ function iCard(x,kind){
     : (conf?'':`<span class="idue nodate">senza data</span>`);
   // In selezione multipla la via serve (si vedono card di case diverse insieme);
   // dentro un gruppo no, sta già scritta nell'intestazione dell'indirizzo.
+  const marcaRitardo = late && !conf && segnaRitardo!==false;
   const tags=[
     conf?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
-    late&&!conf?`<span class="gtag late">${ritardo}g in ritardo</span>`:'',
+    marcaRitardo?`<span class="gtag late">${ritardo}g in ritardo</span>`:'',
     vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}${attendeFoto(x)?'aspetta la foto':'con foto'}</span>`:'',
     nuove?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
-    SELMODE?`<span class="gtag via">${esc(via||'—')}</span>`:'',
+    (SELMODE&&!dentro)?`<span class="gtag via">${esc(via||'—')}</span>`:'',
   ].filter(Boolean).join('');
   // Testata: il LAVORO è la riga grande, non l'indirizzo.
   const head=`<div class="ihead" ${SELMODE?`onclick="toggleSel('${kind}','${id}')"`:`onclick="toggleCard('${key}')"`}>
@@ -1245,7 +1250,7 @@ function iCard(x,kind){
             <button class="btn ok" onclick="sendResched('${kind}','${id}')">${ic('check')}Invia richiesta</button></div></div>`
         : `<button class="notebtn" onclick="openResched('${key}')">${ic('calendar')}Chiedi di spostare la data</button>`}
     </div>` : '';
-  return `<div class="icard compact ${late?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
+  return `<div class="icard compact ${dentro?'dentro':''} ${(late&&segnaRitardo!==false)?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
 }
 
 function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }

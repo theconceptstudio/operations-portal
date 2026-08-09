@@ -199,7 +199,7 @@ svg{display:block}
 /* Card intervento COMPATTA (testata + dettaglio a scomparsa) */
 .icard.compact{padding:0;overflow:hidden}
 .icard.compact.late{box-shadow:inset 3px 0 0 var(--p-vh)}
-.icard.compact.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
+
 .ihead{display:flex;align-items:center;gap:11px;padding:14px 16px;cursor:pointer}
 .icard.compact.open .ihead{border-bottom:1px solid var(--line)}
 .ipdot{width:10px;height:10px;border-radius:50%;flex:none}
@@ -865,3 +865,41 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 .blockrow .blockhd{margin:0;flex:1;min-width:0}
 .vbtn.selbtn{flex:none;padding:6px 12px;font-size:11.5px}
 .vbtn.selbtn .ic{width:14px;height:14px}
+
+/* Scheda aperta DENTRO un gruppo indirizzo: niente bordo/angoli/margine propri,
+   se no diventa un riquadro dentro un riquadro e la riga balla quando si apre. */
+.icard.compact.dentro{border:none;border-radius:0;margin:0;border-top:1px solid var(--line)}
+.icard.compact.dentro:first-child{border-top:none}
+.icard.compact.dentro.late{box-shadow:inset 3px 0 0 var(--p-vh)}
+.icard.compact.dentro .ihead{padding:12px 15px}
+.icard.compact.dentro .ibody{padding:0 15px 15px}
+.aptgroup .icard.compact.dentro + .grow{border-top:1px solid var(--line)}
+
+/* ── Selezione multipla, ripulita ───────────────────────────────────────────
+   Prima la scheda selezionata prendeva un anello scuro spesso mentre stava già
+   dentro il riquadro del gruppo: due bordi sovrapposti, sembrava accavallata.
+   Ora la selezione si legge dal fondo e dalla spunta, senza bordi in più. */
+.icard.compact.dentro.sel,.grow.sel{background:#f3efe8;box-shadow:inset 3px 0 0 var(--ink)}
+.icard.compact.sel:not(.dentro){border-color:var(--ink)}
+.selbox{width:22px;height:22px;border:1.5px solid var(--line-2);border-radius:7px;flex:none;
+  display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--white)}
+
+.selbar{position:sticky;bottom:14px;margin:18px 0 4px;background:var(--ink);color:var(--cream);
+  border-radius:14px;padding:14px;display:flex;flex-direction:column;align-items:stretch;gap:10px;
+  box-shadow:0 8px 26px rgba(43,22,15,.26);z-index:22}
+.selhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.seln{font-family:var(--light);font-size:13px;color:var(--cream)}
+.selbar .selx{display:inline-flex;align-items:center;gap:5px;background:none;border:none;
+  color:var(--greige-soft);font-family:var(--light);font-size:12.5px;padding:4px 2px;cursor:pointer}
+.selbar .selx .ic{width:14px;height:14px}
+/* i tre secondari in griglia: larghezze uguali, niente a capo disordinato */
+.selgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.selgrid > *{width:100%;justify-content:center;padding:11px 6px;font-size:12px;white-space:nowrap}
+.selgrid .ic{width:15px;height:15px}
+.selconf.primaria{width:100%;justify-content:center;padding:13px;font-size:13.5px}
+.selwa{border-radius:9px}
+@media (min-width:640px){
+  .selgrid{grid-template-columns:repeat(3,auto);justify-content:flex-end}
+  .selgrid > *{width:auto;padding:11px 15px}
+  .selconf.primaria{width:auto;align-self:flex-end;padding:12px 24px}
+}
