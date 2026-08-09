@@ -148,6 +148,26 @@ function counts(){
           m:(DATA.issues||[]).length, t:(DATA.tasks||[]).length};
 }
 
+/* La pagina si ridisegna tutta a ogni tocco. Se non facciamo niente, chiudendo una
+   scheda in fondo il documento si accorcia e lo schermo risale da solo: l'operatore
+   perde il punto in cui stava e si ritrova in cima. Qui teniamo fermo un elemento
+   di riferimento (la riga toccata): dopo il ridisegno lo rimettiamo esattamente
+   alla stessa altezza in cui era. */
+let ANCORA=null;
+function ancoraA(chiave){
+  const el=document.querySelector(`[data-k="${chiave}"]`);
+  ANCORA = el ? {chiave, top: el.getBoundingClientRect().top} : null;
+}
+function ripristinaAncora(){
+  if(!ANCORA) return;
+  const el=document.querySelector(`[data-k="${ANCORA.chiave}"]`);
+  if(el){
+    const delta=el.getBoundingClientRect().top - ANCORA.top;
+    if(delta) window.scrollBy(0, delta);
+  }
+  ANCORA=null;
+}
+
 function render(){
   const c=counts();
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
@@ -163,15 +183,18 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && RIF_APT && RIF_Q) rifApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
+  ripristinaAncora();
 }
 function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k, eraAperto){
+  ancoraA('apt:'+k);
   if(eraAperto){ CLOSED_APTS.add(k); OPEN_APTS.delete(k); }
   else { OPEN_APTS.add(k); CLOSED_APTS.delete(k); }
   render();
 }
 function toggleCard(k){
+  ancoraA(k);
   const opening=!OPEN_CARDS.has(k);
   if(opening) OPEN_CARDS.add(k); else OPEN_CARDS.delete(k);
   render();
@@ -530,7 +553,7 @@ function corsiaFoto(arr, extra){
     // veri e vanno confermati come gli altri. Prima restavano righe con il tasto Foto,
     // quindi il blocco usciva mezzo spuntabile e mezzo no.
     if(SELMODE || OPEN_CARDS.has(key)) return iCard(x,x._kind,true,false);
-    return `<div class="grow${i===0?' first':''}">
+    return `<div class="grow${i===0?' first':''}" data-k="${key}">
       <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
       <div class="gmain" onclick="toggleCard('${key}')">
         <div class="gtitle">${esc(titoloDi(x))}</div>
@@ -568,7 +591,7 @@ function gruppoApt(apt, lst, apriDefault, segnaRitardo){
   const forzato=OPEN_APTS.has(apt), chiuso=CLOSED_APTS.has(apt);
   const open = chiuso ? false : (forzato || apriDefault);
   const badge=lateN?`<span class="aptlate">${lateN} in ritardo</span>`:'';
-  const head=`<button class="apthead ${open?'open':''}" onclick="toggleApt('${apt.replace(/'/g,"\\'")}',${open})">
+  const head=`<button class="apthead ${open?'open':''}" data-k="apt:${esc(apt)}" onclick="toggleApt('${apt.replace(/'/g,"\\'")}',${open})">
       <span class="aptname">${ic('pin')}<b>${esc(via)}</b>
         ${via!==apt?`<span class="aptsub">${esc(apt)}</span>`:''}</span>
       <span class="aptmeta">${badge}<span class="aptn">${lst.length}</span>${ic(open?'chevronU':'chevronD')}</span></button>`;
@@ -585,7 +608,7 @@ function rigaItem(x, first, segnaRitardo){
     istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
     x.confermato_manutentore?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
   ].filter(Boolean).join('');
-  return `<div class="grow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" onclick="toggleCard('${key}')">
+  return `<div class="grow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" data-k="${key}" onclick="toggleCard('${key}')">
     <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
     <div class="gmain"><div class="gtitle">${esc(titoloDi(x))}</div>
       ${tags?`<div class="gmeta">${tags}</div>`:''}</div>
@@ -1262,7 +1285,7 @@ function iCard(x,kind,dentro,segnaRitardo){
       <div class="actions">
         ${aspetta&&!conf
           ? `<button class="btn foto grande" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Manda la foto</button>
-             <button class="btn" onclick="conferma('${kind}','${id}')">${ic('check')}Fatto</button>`
+             <button class="btn" onclick="conferma('${kind}','${id}')">${ic('check')}Confermo fatto</button>`
           : `<button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`chiediFoto('${kind}','${id}',${wantFoto})`}" title="${conf?'Clicca per riattivare':''}">
                ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
              <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>`}
@@ -1283,7 +1306,7 @@ function iCard(x,kind,dentro,segnaRitardo){
             <button class="btn ok" onclick="sendResched('${kind}','${id}')">${ic('check')}Invia richiesta</button></div></div>`
         : `<button class="notebtn" onclick="openResched('${key}')">${ic('calendar')}Chiedi di spostare la data</button>`}
     </div>` : '';
-  return `<div class="icard compact ${dentro?'dentro':''} ${(late&&segnaRitardo!==false)?'late':''} ${sel?'sel':''} ${open?'open':''}">${head}${body}</div>`;
+  return `<div class="icard compact ${dentro?'dentro':''} ${(late&&segnaRitardo!==false)?'late':''} ${sel?'sel':''} ${open?'open':''}" data-k="${key}">${head}${body}</div>`;
 }
 
 function isVideo(u){ return /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u||''); }
@@ -1330,11 +1353,8 @@ function allegThumbsHtml(list,key){
       ? `<button class="thumb vid" onclick="openLB('${key}',${i})" title="${nome}">${ic('play')}</button>`
       : `<button class="thumb" onclick="openLB('${key}',${i})" title="${nome}" style="background-image:url('${esc(a.url)}')"></button>`;
   }).join('');
-  const righe=list.map((a,i)=>`<button class="allegr" onclick="openLB('${key}',${i})">
-      <span class="allegn">${esc(allegName(a,i))}</span>
-      <span class="allegf">${esc(allegFirma(a))}</span></button>`).join('');
   return `<div class="lbl">${ic('camera')}Allegati (${list.length}) · condivisi con l'ufficio</div>
-    <div class="thumbs">${thumbs}</div><div class="alleglist">${righe}</div>`;
+    <div class="thumbs">${thumbs}</div>`;
 }
 function allegatiBlock(key){
   const list = ALLEG[key] || normUp(UPLOADS[key]);
@@ -1405,8 +1425,8 @@ function paintLB(){
       ? `<button class="lbth vid ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('play')}</button>`
       : `<button class="lbth ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}" style="background-image:url('${esc(x.url)}')"></button>`).join('')}</div>` : '';
   el.innerHTML=`<div class="lbtop">
-      <div class="lbtitle"><b>${nome}</b>
-        <span>${esc(allegFirma(a))}${n>1?` · ${LB.idx+1} di ${n}`:''}</span></div>
+      <div class="lbtitle"><b>${esc(allegFirma(a))}</b>
+        <span>${nome}${n>1?` · ${LB.idx+1} di ${n}`:''}</span></div>
       <div class="lbacts">
         <a class="lbbtn" href="${esc(a.url)}" target="_blank" rel="noopener" title="Apri originale">${ic('download')}</a>
         <button class="lbbtn" onclick="closeLB()" aria-label="Chiudi">${ic('close')}</button>

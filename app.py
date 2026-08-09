@@ -774,7 +774,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20260809f">
+<link rel=stylesheet href="/portal.css?v=20260809g">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -792,7 +792,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20260809f"></script>
+<script src="/portal.js?v=20260809g"></script>
 </body></html>"""
 
 if __name__ == '__main__':
