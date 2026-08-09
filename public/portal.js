@@ -526,7 +526,10 @@ function corsiaFoto(arr, extra){
   const righe=arr.map((x,i)=>{
     const key=x._kind+':'+x.notion_id, c=P_COLOR[x.priorita]||'#9A9183';
     const d=dateOf(x), l=isLate(x);
-    if(OPEN_CARDS.has(key)) return iCard(x,x._kind,true,false);
+    // In selezione multipla anche queste diventano schede spuntabili: sono interventi
+    // veri e vanno confermati come gli altri. Prima restavano righe con il tasto Foto,
+    // quindi il blocco usciva mezzo spuntabile e mezzo no.
+    if(SELMODE || OPEN_CARDS.has(key)) return iCard(x,x._kind,true,false);
     return `<div class="grow${i===0?' first':''}">
       <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
       <div class="gmain" onclick="toggleCard('${key}')">
@@ -1291,6 +1294,26 @@ function isPdfA(a){ const u=String((a&&a.url)||'').split('?')[0];
 let ALLEG={};
 function normUp(list){ return (list||[]).map(x => typeof x==='string' ? {url:x, video:isVideo(x)} : x); }
 /* Nome leggibile dell'allegato: quello di Notion, altrimenti dedotto dall'URL */
+/* Chi ha caricato il file e quando. Con foto e video che si accumulano su uno
+   stesso intervento, senza questo non si capisce piu' quale sia il "prima" e
+   quale il "dopo". I file messi dall'ufficio direttamente su Notion non hanno
+   traccia: si dichiarano come tali invece di inventare un autore. */
+function allegFirma(a){
+  if(!a) return '';
+  if(!a.chi) return "aggiunto dall'ufficio";
+  let q='';
+  if(a.quando){
+    const d=new Date(a.quando);
+    if(!isNaN(d)){
+      const oggi=new Date();
+      const stessoGiorno = d.toDateString()===oggi.toDateString();
+      const ora=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      q = stessoGiorno ? ('oggi alle '+ora)
+        : (d.getDate()+' '+MESI3[d.getMonth()]+' alle '+ora);
+    }
+  }
+  return 'caricata da '+a.chi+(q?' · '+q:'');
+}
 function allegName(a,i){
   let n=((a&&a.name)||'').trim();
   if(!n){ try{ n=decodeURIComponent(String((a&&a.url)||'').split('?')[0].split('/').pop()||''); }catch(_){ n=''; } }
@@ -1307,7 +1330,11 @@ function allegThumbsHtml(list,key){
       ? `<button class="thumb vid" onclick="openLB('${key}',${i})" title="${nome}">${ic('play')}</button>`
       : `<button class="thumb" onclick="openLB('${key}',${i})" title="${nome}" style="background-image:url('${esc(a.url)}')"></button>`;
   }).join('');
-  return `<div class="lbl">${ic('camera')}Allegati (${list.length}) · condivisi con l'ufficio</div><div class="thumbs">${thumbs}</div>`;
+  const righe=list.map((a,i)=>`<button class="allegr" onclick="openLB('${key}',${i})">
+      <span class="allegn">${esc(allegName(a,i))}</span>
+      <span class="allegf">${esc(allegFirma(a))}</span></button>`).join('');
+  return `<div class="lbl">${ic('camera')}Allegati (${list.length}) · condivisi con l'ufficio</div>
+    <div class="thumbs">${thumbs}</div><div class="alleglist">${righe}</div>`;
 }
 function allegatiBlock(key){
   const list = ALLEG[key] || normUp(UPLOADS[key]);
@@ -1378,7 +1405,8 @@ function paintLB(){
       ? `<button class="lbth vid ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('play')}</button>`
       : `<button class="lbth ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}" style="background-image:url('${esc(x.url)}')"></button>`).join('')}</div>` : '';
   el.innerHTML=`<div class="lbtop">
-      <div class="lbtitle"><b>${nome}</b>${n>1?`<span>${LB.idx+1} di ${n}</span>`:''}</div>
+      <div class="lbtitle"><b>${nome}</b>
+        <span>${esc(allegFirma(a))}${n>1?` · ${LB.idx+1} di ${n}`:''}</span></div>
       <div class="lbacts">
         <a class="lbbtn" href="${esc(a.url)}" target="_blank" rel="noopener" title="Apri originale">${ic('download')}</a>
         <button class="lbbtn" onclick="closeLB()" aria-label="Chiudi">${ic('close')}</button>

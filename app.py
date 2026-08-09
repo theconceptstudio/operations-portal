@@ -116,6 +116,39 @@ def _allegati_of(page, prop='Allegati'):
         out.append({'name': name, 'url': url, 'video': video})
     return out
 
+def _traccia_allegato(url, item_id, chi):
+    """Segna chi ha caricato il file e quando. Su Notion questa informazione non esiste:
+    con decine di foto per intervento, senza traccia non si capisce piu' niente."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return
+    try:
+        _session.post(f'{SUPABASE_URL}/rest/v1/op_allegati_meta',
+                      headers=_sb_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
+                      json=[{'url': url, 'item_id': item_id, 'chi': chi or 'Operatore'}], timeout=15)
+    except Exception:
+        pass
+
+
+def _meta_allegati(urls):
+    """Mappa url -> {chi, quando} per gli allegati caricati dal portale."""
+    if not (urls and SUPABASE_URL and SUPABASE_KEY):
+        return {}
+    try:
+        out = {}
+        for i in range(0, len(urls), 40):
+            chunk = [u.replace(',', '%2C') for u in urls[i:i+40]]
+            r = _session.get(f'{SUPABASE_URL}/rest/v1/op_allegati_meta',
+                             headers=_sb_headers(),
+                             params={'select': 'url,chi,quando', 'url': f'in.({",".join(chunk)})'},
+                             timeout=15)
+            if r.ok:
+                for row in r.json():
+                    out[row['url']] = row
+        return out
+    except Exception:
+        return {}
+
+
 def _append_nota(item_id, table, testo):
     """Aggiunge una riga (con timestamp gg/mm hh:mm ora italiana) alle Note operatore su Notion + mirror.
     Idempotente: se l'ultima riga ha lo stesso testo, non la ripete (evita duplicati da retry/doppio invio)."""
@@ -259,7 +292,13 @@ def allegati(token, kind, item_id):
         page = n_get(item_id)
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-    return jsonify({'ok': True, 'allegati': _allegati_of(page)})
+    lista = _allegati_of(page)
+    meta = _meta_allegati([a['url'] for a in lista])
+    for a in lista:
+        m = meta.get(a['url'])
+        a['chi'] = (m or {}).get('chi')        # None = aggiunto dall'ufficio su Notion
+        a['quando'] = (m or {}).get('quando')
+    return jsonify({'ok': True, 'allegati': lista})
 
 # host da cui accettiamo di riscaricare un allegato (Notion firma gli URL su S3, Supabase Storage)
 _FILE_HOSTS = ('.notion.so', '.notion-static.com', '.amazonaws.com', '.supabase.co')
@@ -312,12 +351,13 @@ def _alleg_path(issue_id, ext):
     return f"{issue_id}/{_uuid.uuid4().hex}.{ext}", ext
 
 
-def _attach_to_notion(issue_id, url, ext):
+def _attach_to_notion(issue_id, url, ext, chi=None):
     """Aggancia un file già caricato su Storage alla property Allegati, senza perdere i precedenti."""
     page = n_get(issue_id)
     cur = (page.get('properties', {}).get('Allegati', {}) or {}).get('files', []) or []
     cur.append({'name': f"foto-{datetime.date.today().isoformat()}.{ext}", 'external': {'url': url}})
     n_patch(issue_id, {'Allegati': {'files': cur}})
+    _traccia_allegato(url, issue_id, chi)
 
 
 # ⚠️ PERCHÉ ESISTE QUESTO ENDPOINT (fix 9 ago 2026):
@@ -358,7 +398,7 @@ def foto_fatta(token):
     if not (issue_id and url.startswith(f'{SUPABASE_URL}/storage/v1/object/public/op-allegati/')):
         return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
     try:
-        _attach_to_notion(issue_id, url, b.get('ext') or 'jpg')
+        _attach_to_notion(issue_id, url, b.get('ext') or 'jpg', op.get('nome'))
     except requests.HTTPError as e:
         return jsonify({'ok': True, 'url': url, 'warn': 'salvata, ma non agganciata a Notion: ' + str(e)})
     return jsonify({'ok': True, 'url': url})
@@ -383,7 +423,7 @@ def foto(token):
     url = f"{SUPABASE_URL}/storage/v1/object/public/op-allegati/{path}"
     # append a Allegati su Notion (preserva i file esistenti)
     try:
-        _attach_to_notion(issue_id, url, ext)
+        _attach_to_notion(issue_id, url, ext, op.get('nome'))
     except requests.HTTPError as e:
         return jsonify({'ok': True, 'url': url, 'warn': 'salvata, ma non agganciata a Notion: ' + str(e)})
     return jsonify({'ok': True, 'url': url})
@@ -734,7 +774,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20260809e">
+<link rel=stylesheet href="/portal.css?v=20260809f">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -752,7 +792,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20260809e"></script>
+<script src="/portal.js?v=20260809f"></script>
 </body></html>"""
 
 if __name__ == '__main__':
