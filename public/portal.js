@@ -496,7 +496,8 @@ function corsiaFoto(arr, extra){
       <div class="gmain" onclick="toggleCard('${key}')">
         <div class="gtitle">${esc(titoloDi(x))}</div>
         <div class="gmeta"><span class="gtag via">${esc(x.indirizzo||x.appartamento||'—')}</span>
-          ${l?`<span class="gtag foto">ferma da ${daysBetween(d,todayISO())}g</span>`:''}</div>
+          ${l?`<span class="gtag foto">ferma da ${daysBetween(d,todayISO())}g</span>`:''}
+          ${istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:''}</div>
       </div>
       <button class="btn foto minif" onclick="pickFoto('${x._kind}','${x.notion_id}')">
         ${ic('camera')}Foto</button></div>`;
