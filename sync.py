@@ -153,6 +153,12 @@ def _segna_istruzioni_cambiate(table, rows):
         if p is None:
             continue                                   # riga nuova: niente da segnalare
         row['istruzioni_viste_il'] = p.get('istruzioni_viste_il')
+        # Senza un'impronta precedente non sappiamo se il testo è cambiato: è la prima
+        # volta che lo misuriamo. Registriamo e basta, altrimenti al primo giro
+        # risulterebbero "aggiornate" tutte le schede che hanno delle istruzioni.
+        if not p.get('istruzioni_hash'):
+            row['istruzioni_agg_il'] = p.get('istruzioni_agg_il')
+            continue
         if p.get('istruzioni_hash') != h and testo:
             row['istruzioni_agg_il'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             n += 1
