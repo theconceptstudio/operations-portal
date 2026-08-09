@@ -279,6 +279,64 @@ def refresh(token):
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
+def _alleg_path(issue_id, ext):
+    import uuid as _uuid
+    ext = ''.join(c for c in (ext or 'jpg').lower() if c.isalnum())[:5] or 'jpg'
+    return f"{issue_id}/{_uuid.uuid4().hex}.{ext}", ext
+
+
+def _attach_to_notion(issue_id, url, ext):
+    """Aggancia un file già caricato su Storage alla property Allegati, senza perdere i precedenti."""
+    page = n_get(issue_id)
+    cur = (page.get('properties', {}).get('Allegati', {}) or {}).get('files', []) or []
+    cur.append({'name': f"foto-{datetime.date.today().isoformat()}.{ext}", 'external': {'url': url}})
+    n_patch(issue_id, {'Allegati': {'files': cur}})
+
+
+# ⚠️ PERCHÉ ESISTE QUESTO ENDPOINT (fix 9 ago 2026):
+# Vercel rifiuta a monte qualsiasi richiesta oltre ~4.5 MB. Una foto di telefono ne pesa
+# 3-12 e un video molto di più: l'upload che passava dal server tornava 413 e l'operatore
+# leggeva solo "Caricamento non riuscito". Qui il server firma un permesso di scrittura
+# temporaneo e il file va DAL TELEFONO DIRETTO a Supabase Storage: niente limite di
+# dimensione, niente chiave nel browser (la firma vale per quel singolo file).
+@app.route('/api/o/<token>/foto-firma', methods=['POST'])
+def foto_firma(token):
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    b = request.get_json(force=True) or {}
+    issue_id = (b.get('issue_id') or '').strip()
+    if not issue_id: return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
+    path, ext = _alleg_path(issue_id, b.get('ext'))
+    try:
+        r = _session.post(f'{SUPABASE_URL}/storage/v1/object/upload/sign/op-allegati/{path}',
+                          headers=_sb_headers(), json={}, timeout=20)
+        if not r.ok:
+            return jsonify({'ok': False, 'error': 'firma: ' + r.text[:200]}), 500
+        signed = (r.json() or {}).get('url') or ''
+        return jsonify({'ok': True,
+                        'upload': f'{SUPABASE_URL}/storage/v1{signed}',
+                        'url': f'{SUPABASE_URL}/storage/v1/object/public/op-allegati/{path}',
+                        'ext': ext})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/o/<token>/foto-fatta', methods=['POST'])
+def foto_fatta(token):
+    """Il telefono ha finito di caricare: agganciamo il file a Notion."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    b = request.get_json(force=True) or {}
+    issue_id, url = (b.get('issue_id') or '').strip(), (b.get('url') or '').strip()
+    if not (issue_id and url.startswith(f'{SUPABASE_URL}/storage/v1/object/public/op-allegati/')):
+        return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
+    try:
+        _attach_to_notion(issue_id, url, b.get('ext') or 'jpg')
+    except requests.HTTPError as e:
+        return jsonify({'ok': True, 'url': url, 'warn': 'salvata, ma non agganciata a Notion: ' + str(e)})
+    return jsonify({'ok': True, 'url': url})
+
+
 @app.route('/api/o/<token>/foto', methods=['POST'])
 def foto(token):
     op = operatore_by_token(token)
@@ -286,9 +344,8 @@ def foto(token):
     issue_id = request.form.get('issue_id')
     f = request.files.get('file')
     if not (issue_id and f): return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
-    import uuid as _uuid
     ext = (f.filename.rsplit('.', 1)[-1] if '.' in (f.filename or '') else 'jpg').lower()
-    path = f"{issue_id}/{_uuid.uuid4().hex}.{ext}"
+    path, ext = _alleg_path(issue_id, ext)
     data = f.read()
     up = _session.post(f'{SUPABASE_URL}/storage/v1/object/op-allegati/{path}',
                        headers={'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}',
@@ -299,10 +356,7 @@ def foto(token):
     url = f"{SUPABASE_URL}/storage/v1/object/public/op-allegati/{path}"
     # append a Allegati su Notion (preserva i file esistenti)
     try:
-        page = n_get(issue_id)
-        cur = (page.get('properties', {}).get('Allegati', {}) or {}).get('files', []) or []
-        cur.append({'name': f"foto-{datetime.date.today().isoformat()}.{ext}", 'external': {'url': url}})
-        n_patch(issue_id, {'Allegati': {'files': cur}})
+        _attach_to_notion(issue_id, url, ext)
     except requests.HTTPError as e:
         return jsonify({'ok': True, 'url': url, 'warn': 'salvata, ma non agganciata a Notion: ' + str(e)})
     return jsonify({'ok': True, 'url': url})
@@ -653,7 +707,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css">
+<link rel=stylesheet href="/portal.css?v=20260809">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -671,7 +725,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js"></script>
+<script src="/portal.js?v=20260809"></script>
 </body></html>"""
 
 if __name__ == '__main__':

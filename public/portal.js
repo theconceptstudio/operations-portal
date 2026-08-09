@@ -1369,18 +1369,62 @@ function pickFoto(kind,id){
     inp.onchange=uploadFoto; document.body.appendChild(inp); }
   inp.value=''; inp.click();  // niente capture: il telefono chiede Fotocamera / Foto / File
 }
+/* Rimpicciolisce la foto prima di spedirla: uno scatto di telefono è 3-12 MB e 4000px,
+   per documentare una macchia bastano 1920px. Meno dati sulla rete dell'operatore e
+   caricamento molto più rapido. Se il browser non riesce a leggerla, si manda l'originale. */
+async function comprimi(f){
+  if(!/^image\//.test(f.type)) return f;          // i video non si toccano
+  if(f.size < 900*1024) return f;                 // già leggera
+  try{
+    const bmp=await createImageBitmap(f);
+    const MAX=1920, s=Math.min(1, MAX/Math.max(bmp.width,bmp.height));
+    const w=Math.round(bmp.width*s), h=Math.round(bmp.height*s);
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(bmp,0,0,w,h);
+    if(bmp.close) bmp.close();
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.82));
+    if(!blob || blob.size>=f.size) return f;
+    return new File([blob], f.name.replace(/\.[^.]+$/,'')+'.jpg', {type:'image/jpeg'});
+  }catch(_){ return f; }
+}
+
+/* Il file va DAL TELEFONO DIRETTO a Supabase Storage.
+   Prima passava dal nostro server, ma Vercel blocca tutto quello che supera ~4.5 MB:
+   l'operatore vedeva "Caricamento non riuscito" senza capire perché (9 ago 2026). */
+async function inviaFile(kind,id,f){
+  const ext=((f.name||'').split('.').pop()||'jpg').toLowerCase();
+  const s=await fetch(`${API}/foto-firma`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({issue_id:id, ext})}).then(r=>r.json());
+  if(!s.ok || !s.upload){
+    // Ripiego sulla vecchia strada: funziona solo per i file piccoli.
+    if(f.size > 4*1024*1024) throw new Error('troppo grande');
+    const fd=new FormData(); fd.append('issue_id',id); fd.append('kind',kind); fd.append('file',f);
+    const j=await fetch(`${API}/foto`,{method:'POST',body:fd}).then(r=>r.json());
+    if(!j.ok) throw new Error(j.error||'invio');
+    return j.url;
+  }
+  const up=await fetch(s.upload,{method:'PUT',
+    headers:{'Content-Type':f.type||'application/octet-stream'}, body:f});
+  if(!up.ok) throw new Error('invio '+up.status);
+  const d=await fetch(`${API}/foto-fatta`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({issue_id:id, url:s.url, ext:s.ext})}).then(r=>r.json());
+  if(!d.ok) throw new Error(d.error||'aggancio');
+  return s.url;
+}
+
 async function uploadFoto(e){
   const files=Array.from(e.target.files||[]); if(!files.length||!FOTO_ID) return;
   const kind=FOTO_KIND||'issue', id=FOTO_ID, key=kind+':'+id;
   UPLOADS[key]=UPLOADS[key]||[];
   const vids=files.filter(f=>/^video/.test(f.type)||isVideo(f.name)).length;
   const phts=files.length-vids;
-  toast(files.length>1?`Carico ${files.length} file…`:'Carico il file…');
-  let ok=0;
-  for(const f of files){
-    const fd=new FormData(); fd.append('issue_id',id); fd.append('kind',kind); fd.append('file',f);
-    try{ const r=await fetch(`${API}/foto`,{method:'POST',body:fd}); const j=await r.json();
-      if(j.ok){ ok++; if(j.url) UPLOADS[key].push(j.url); } }catch(_){}
+  let ok=0, errore='';
+  for(let i=0;i<files.length;i++){
+    toast(files.length>1?`Invio ${i+1} di ${files.length}…`:'Invio in corso…');
+    try{
+      const url=await inviaFile(kind, id, await comprimi(files[i]));
+      ok++; if(url) UPLOADS[key].push(url);
+    }catch(err){ errore=errore||String(err.message||err); }
   }
   render();  // mostra subito le anteprime (UPLOADS)
   fetchAllegati(kind, id);  // poi allinea alla lista reale/condivisa su Notion
@@ -1397,7 +1441,10 @@ async function uploadFoto(e){
           if(it){ it.note_operatore=j.note_operatore; render(); } } }catch(_){}
     }
   }
-  toast(ok?(ok>1?`${ok} file inviati all'ufficio`:"File inviato all'ufficio"):'Caricamento non riuscito');
+  if(ok) toast(ok>1?`${ok} file inviati all'ufficio`:"File inviato all'ufficio");
+  else toast(errore==='troppo grande'
+    ? 'File troppo pesante: prova con un video più corto'
+    : 'Invio non riuscito, riprova' + (errore?' ('+errore+')':''));
 }
 
 function toast(msg){ const t=document.getElementById('toast');
