@@ -328,7 +328,38 @@ function inviaWaSelezione(){
 /* Allegati in due tempi: prima li prepariamo, poi l'utente tocca "Condividi".
    Su iPhone la condivisione nativa vale solo se parte NELL'ISTANTE del tocco:
    se la lanciassimo dopo il download, iOS la blocca. Per questo servono due passaggi. */
-let WA_FILES=[], _waBusy=false;
+let WA_FILES=[], _waBusy=false, WA_TESTO='';
+
+/* "Inoltra su WhatsApp" da una scheda. Gli allegati sono di fatto le istruzioni
+   dell'intervento (foto del pezzo, del punto da sistemare), quindi devono partire
+   insieme al messaggio.
+   ⚠️ Il link wa.me porta SOLO testo: per allegare davvero i file serve la
+   condivisione nativa del telefono, e su iPhone quella vale solo se parte
+   nell'istante del tocco. Per questo, quando ci sono allegati, si passa dal
+   foglio: prima li prepariamo, poi l'utente tocca "Inoltra". */
+function apriWaTesto(items){
+  window.open('https://wa.me/?text='+encodeURIComponent(waTestoInterventi(items)),'_blank','noopener');
+}
+async function inoltraWa(kind,id){
+  if(_waBusy) return;
+  const arr=kind==='issue'?DATA.issues:DATA.tasks;
+  const it=(arr||[]).find(x=>x.notion_id===id); if(!it) return;
+  const x=Object.assign({},it,{_kind:kind,_key:kind+':'+id});
+  if(!ALLEG[x._key]){                      // la lista non e' ancora arrivata: la chiedo
+    try{ const r=await fetch(`${API}/allegati/${kind}/${id}`,{cache:'no-store'});
+      const j=await r.json(); if(j&&j.ok) ALLEG[x._key]=j.allegati; }catch(_){}
+  }
+  const quanti=(ALLEG[x._key]||[]).filter(a=>a&&a.url).length;
+  if(!quanti){ apriWaTesto([x]); return; }  // niente allegati: parte subito, un tocco solo
+  _waBusy=true; progOpen(); progSet(0,0);
+  let files=[];
+  try{ files=await raccogliAllegati([x],progSet); }catch(_){}
+  progClose(); _waBusy=false;
+  if(!files.length){ apriWaTesto([x]); return; }
+  WA_FILES=files; WA_TESTO=waTestoInterventi([x]); WA_SOLOTESTO=[x];
+  mostraSheetAllegati();
+}
+let WA_SOLOTESTO=null;
 async function preparaAllegati(){
   if(_waBusy) return;
   const items=selItems();
@@ -338,7 +369,7 @@ async function preparaAllegati(){
   try{ files=await raccogliAllegati(items,progSet); }catch(_){}
   progClose(); _waBusy=false;
   if(!files.length){ toast('Nessun allegato in questi interventi'); return; }
-  WA_FILES=files; mostraSheetAllegati();
+  WA_FILES=files; WA_TESTO=''; WA_SOLOTESTO=null; mostraSheetAllegati();
 }
 function chiudiSheet(){ const el=document.getElementById('washeet'); if(el) el.remove(); }
 function mostraSheetAllegati(){
@@ -348,9 +379,10 @@ function mostraSheetAllegati(){
   el.innerHTML=`<div class="wsback" onclick="chiudiSheet()"></div>
     <div class="wscard">
       <div class="wstitle">${WA_FILES.length} allegat${WA_FILES.length===1?'o':'i'} pront${WA_FILES.length===1?'o':'i'}</div>
-      <div class="wssub">Ogni file ha il nome dell'intervento a cui appartiene.</div>
+      <div class="wssub">${WA_TESTO?'Partono insieme al messaggio dell\'intervento.':'Ogni file ha il nome dell\'intervento a cui appartiene.'}</div>
       <div class="wslist">${WA_FILES.map(f=>`<div class="wsf">${ic('camera')}<span>${esc(f.name)}</span></div>`).join('')}</div>
-      ${puo?`<button class="wsbtn wa" onclick="condividiAllegati()">${ic('message')}Condividi (WhatsApp, Mail…)</button>`:''}
+      ${puo?`<button class="wsbtn wa" onclick="condividiAllegati()">${ic('message')}${WA_TESTO?'Inoltra su WhatsApp':'Condividi (WhatsApp, Mail…)'}</button>`:''}
+      ${WA_SOLOTESTO?`<button class="wsbtn" onclick="chiudiSheet();apriWaTesto(WA_SOLOTESTO)">${ic('message')}Inoltra solo il testo</button>`:''}
       <button class="wsbtn" onclick="scaricaAllegatiPronti()">${ic('download')}Scarica tutti</button>
       <button class="wsbtn ghost" onclick="chiudiSheet()">Annulla</button>
     </div>`;
@@ -358,7 +390,7 @@ function mostraSheetAllegati(){
 }
 async function condividiAllegati(){
   // chiamata direttamente dal tocco: cosi' iOS la accetta
-  try{ await navigator.share({files:WA_FILES, text:waTestoInterventi(selItems())}); chiudiSheet(); }
+  try{ await navigator.share({files:WA_FILES, text: WA_TESTO || waTestoInterventi(selItems())}); chiudiSheet(); }
   catch(e){ if(!(e&&e.name==='AbortError')) toast('Condivisione non riuscita, prova a scaricarli'); }
 }
 function scaricaAllegatiPronti(){ scaricaBlobs(WA_FILES); chiudiSheet();
@@ -1187,8 +1219,6 @@ function iCard(x,kind,dentro,segnaRitardo){
   if(dataRaw){ dataLbl=dLong(dataRaw); if(!conf && dataRaw<todayISO()){ late=true; ritardo=daysBetween(dataRaw,todayISO()); } }
   const via=x.indirizzo||x.appartamento;
   const id=x.notion_id;
-  const waTarget=OFFICE_WA?`https://wa.me/${OFFICE_WA}`:'https://wa.me/';
-  const wa=`${waTarget}?text=${encodeURIComponent(waTestoInterventi([Object.assign({},x,{_kind:kind,_key:kind+':'+id})]))}`;
   const istr=(x.istruzioni||'').trim();
   const key=kind+':'+id;
   const sel=SELMODE && SELECTED.has(key);
@@ -1233,7 +1263,7 @@ function iCard(x,kind,dentro,segnaRitardo){
           : `<button class="btn ok ${conf?'done':''}" onclick="${conf?`riattiva('${kind}','${id}')`:`chiediFoto('${kind}','${id}',${wantFoto})`}" title="${conf?'Clicca per riattivare':''}">
                ${ic('check')}${conf?'Confermato':'Confermo fatto'}</button>
              <button class="btn foto" onclick="pickFoto('${kind}','${id}')">${ic('camera')}Foto / Video</button>`}
-        ${wa?`<a class="btn wa" href="${wa}" target="_blank" rel="noopener">${ic('message')}WhatsApp</a>`:''}
+        <button class="btn wa" onclick="inoltraWa('${kind}','${id}')">${ic('message')}Inoltra su WhatsApp</button>
       </div>
       ${NOTE_OPEN===key
         ? `<div class="notebox">
