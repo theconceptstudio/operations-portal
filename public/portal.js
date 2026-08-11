@@ -1167,10 +1167,19 @@ function viewStorico(){
   if(RIF_STORICO===null) return `<div class="empty-state">${ic('truck')}<div class="t">Carico gli ordini…</div></div>`;
   if(!RIF_STORICO.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun ordine ancora</div>Quando invii un ordine comparirà qui.</div>`;
 
-  // filtro appartamento (via)
-  const aptChips = RIF_APTS && RIF_APTS.length>1 ? `<div class="rifhchips vie">
+  // ── Filtro via: SOLO gli indirizzi che hanno davvero qualcosa da seguire ───
+  // Pensato per crescere: con quattro immobili elencarli tutti va bene, con venti
+  // diventerebbe un muro di pastiglie. Mostrando solo quelli che in questo momento
+  // hanno roba aperta, la fila resta corta da sola qualunque sia il numero di case
+  // (con venti immobili e dodici ordini aperti si vedono cinque vie, non venti).
+  // La via selezionata resta sempre in elenco, se no non si potrebbe togliere.
+  const vieAttive=[...new Set(RIF_STORICO
+    .filter(o=>o.fase!=='consegnato')
+    .map(o=>o.via).filter(Boolean))].sort();
+  if(RIF_HAPT && !vieAttive.includes(RIF_HAPT)) vieAttive.push(RIF_HAPT);
+  const aptChips = vieAttive.length>1 ? `<div class="rifhchips vie">
     <button class="rifhchip ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutte le vie</button>
-    ${RIF_APTS.map(a=>`<button class="rifhchip ${RIF_HAPT===a.via?'on':''}" onclick="histSetApt('${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}
+    ${vieAttive.map(v=>`<button class="rifhchip ${RIF_HAPT===v?'on':''}" onclick="histSetApt('${esc(v).replace(/'/g,"\\'")}')">${ic('pin')}${esc(v)}</button>`).join('')}
   </div>` : '';
 
   // filtro per fase, con conteggi calcolati sull'appartamento scelto
