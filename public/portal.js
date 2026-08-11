@@ -1200,16 +1200,19 @@ function viewStorico(){
     // STEP INTERNO (solo operatore): quando la roba è "in magazzino" l'operatore
     // chiama il magazzino e spunta "presenza verificata". Non va su Notion.
     const ver=!!o.verificato;
-    const verifBox=selezionabile
+    // La spunta "presenza verificata" e' un passaggio interno che riguarda SOLO il
+    // magazzino (l'operatore chiama e si fa confermare che la merce c'e' davvero).
+    // Per un pacco in area posta non ha senso: ci si va e si vede. Li' resta solo
+    // la nota, che serve sempre.
+    const nota=`<button class="rifvnota" onclick="event.stopPropagation();rifNotaOpen('${o.id}')" title="Aggiungi una nota per l'ufficio">${ic('message')}Nota</button>`;
+    const verifBox = o.fase==='magazzino'
       ? `<div class="rifverif ${ver?'ok':''}">
           <button class="rifvchk" onclick="event.stopPropagation();rifVerifica('${o.id}',${ver?'false':'true'})">
             <span class="rifvbox ${ver?'on':''}">${ver?ic('check'):''}</span>
-            ${(function(){
-              const dove = o.fase==='postale' ? 'in area posta' : 'in magazzino';
-              return ver ? ('Presenza verificata '+dove) : ('Verifica presenza '+dove);
-            })()}</button>
-          <button class="rifvnota" onclick="event.stopPropagation();rifNotaOpen('${o.id}')" title="Aggiungi una nota per l'ufficio">${ic('message')}Nota</button>
-        </div>` : '';
+            ${ver?'Presenza verificata in magazzino':'Verifica presenza in magazzino'}</button>
+          ${nota}
+        </div>`
+      : (selezionabile ? `<div class="rifverif solonota">${nota}</div>` : '');
     // note del magazzino (timestampate, arrivano dal campo Note su Notion)
     const notemag=(o.note_magazzino||[]);
     const noteHtml=notemag.length
