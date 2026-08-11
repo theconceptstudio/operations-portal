@@ -39,6 +39,7 @@ const ICN = {
   download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/>',
   bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
   history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
+  clip:'<path d="M20.5 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8L9.9 17.7a1.8 1.8 0 0 1-2.6-2.6L15 7.5"/>',
 };
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
@@ -1248,9 +1249,9 @@ function viewStorico(){
           <button class="rifvchk" onclick="event.stopPropagation();rifVerifica('${o.id}',${ver?'false':'true'})">
             <span class="rifvbox ${ver?'on':''}">${ver?ic('check'):''}</span>
             ${ver?'Presenza verificata in magazzino':'Verifica presenza in magazzino'}</button>
-          ${nota}
+          <span class="rifvact">${clip}${nota}</span>
         </div>`
-      : (selezionabile ? `<div class="rifverif solonota">${nota}</div>` : '');
+      : `<div class="rifverif solonota"><span class="rifvact">${clip}${nota}</span></div>`;
     // note del magazzino (timestampate, arrivano dal campo Note su Notion)
     const notemag=(o.note_magazzino||[]);
     const noteHtml=notemag.length
@@ -1273,9 +1274,12 @@ function viewStorico(){
     const meta = giorniFase!=null
       ? `<span class="rifhda${giorniFase>=3?' fermo':''}">${giorniFase===0?'oggi':'da '+giorniFase+(giorniFase===1?' giorno':' giorni')}</span>`
       : '';
+    // L'allegato NON sta nella riga compatta: quasi sempre e' un PDF, non si
+    // apre quasi mai, e li' rubava spazio alla lettura veloce. Sta dentro, nella
+    // riga delle azioni, come tasto vero accanto a Nota.
     const clip = alleg.length
-      ? `<button class="rifclip" title="Ricevuta / foto (${alleg.length})"
-           onclick="event.stopPropagation();openLB('${key}',0)">${ic('camera')}<span>${alleg.length}</span></button>`
+      ? `<button class="rifallg" onclick="event.stopPropagation();openLB('${key}',0)">
+           ${ic('clip')}Allegato${alleg.length>1?' ('+alleg.length+')':''}</button>`
       : '';
     return `<div class="rifhist compatta ${sel?'sel':''} ${selezionabile?'selettabile':''} ${aperta?'aperta':''}"
         data-h="${esc(hay)}" data-k="${key}">
@@ -1283,12 +1287,12 @@ function viewStorico(){
         ${selBtn}
         <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}
           <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
-        <div class="rifhact">${meta}${clip}
-          <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}"
+        <div class="rifhact">${meta}
+          <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}" aria-label="${aperta?'Chiudi':'Dettagli'}"
             onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
         </div>
       </div>
-      ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}${thumbs}`:''}
+      ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}`:''}
     </div>`;
   }).join('');
 
