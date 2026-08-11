@@ -1294,7 +1294,7 @@ function viewStorico(){
       </div>
       ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}`:''}
     </div>`;
-  }).join('');
+  });   // ⚠️ resta un ARRAY: serve per distribuire le schede nei gruppi per indirizzo
 
   // ── Raggruppate per INDIRIZZO ────────────────────────────────────────────
   // Prima "Via dei Fabbri 11" compariva tre volte di fila con tre cose diverse.
