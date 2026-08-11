@@ -919,3 +919,29 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 /* Riga con la sola nota (pacchi in area posta): niente spunta di verifica, che
    riguarda solo il magazzino. */
 .rifverif.solonota{justify-content:flex-end}
+
+/* ── Monitora: scheda compatta (11 ago 2026) ───────────────────────────────
+   Prima ogni ordine stampava percorso, note e un riquadro grande "Ricevuta/foto"
+   che per un PDF non mostra nemmeno un'anteprima: con quaranta ordini si scorreva
+   all'infinito. Ora in lista c'e' solo cio' che serve a colpo d'occhio, il resto
+   si apre col chevron. */
+.rifhist.compatta{padding:11px 13px}
+.rifhist.compatta .rifhisth{gap:8px}
+.rifhrow{display:flex;align-items:center;gap:10px;margin-top:7px}
+.rifhcosa{flex:1;min-width:0;font-family:var(--light);font-size:14px;color:var(--ink);
+  line-height:1.4;overflow-wrap:anywhere}
+.rifhcosa i{color:var(--greige-soft);font-style:normal}
+.rifhact{display:flex;align-items:center;gap:7px;flex:none}
+/* da quanto e' fermo in questa fase: e' il numero che fa capire cosa sta marcendo */
+.rifhda{font-family:var(--light);font-size:11px;color:var(--greige);white-space:nowrap}
+.rifhda.fermo{color:var(--p-vh);font-family:var(--body)}
+/* allegato = graffetta piccola, apre direttamente il visore */
+.rifclip{display:inline-flex;align-items:center;gap:3px;background:var(--cream);
+  border:1px solid var(--line);border-radius:999px;padding:4px 8px;cursor:pointer;
+  font-family:var(--light);font-size:11px;color:var(--greige-text)}
+.rifclip .ic{width:13px;height:13px;color:var(--greige)}
+.rifhexp{background:none;border:none;padding:2px;cursor:pointer;display:inline-flex;color:var(--greige)}
+.rifhexp .ic{width:18px;height:18px}
+/* quando e' aperta, i dettagli si staccano dalla riga */
+.rifhist.compatta.aperta .rift{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.rifhist.compatta .rifhdoc{margin-top:10px}

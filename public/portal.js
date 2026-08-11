@@ -866,6 +866,26 @@ function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
 
 /* Cronologia ordini */
 let RIF_LOADEDMORE=false;
+/* Ordini con i dettagli aperti (percorso, note, allegati). Di default chiusi:
+   in lista conta scorrere in fretta, non leggere tutto di ognuno. */
+let RIF_OPEN=new Set();
+function rifToggleOrd(k){
+  ancoraA(k);
+  if(RIF_OPEN.has(k)) RIF_OPEN.delete(k); else RIF_OPEN.add(k);
+  render();
+}
+/* Da quanti giorni l'ordine e' fermo nella fase in cui si trova: e' il numero che
+   fa capire cosa sta marcendo (un pacco in area posta da 5 giorni non e' come uno
+   arrivato stamattina). */
+function rifGiorniInFase(o){
+  const d = o.fase==='postale'   ? (o.in_posta_il||o.data_consegna)
+          : o.fase==='magazzino' ? (o.arrivo_magazzino||o.data_consegna)
+          : o.fase==='ordinato'  ? o.ordinato_il
+          : o.fase==='richiesto' ? o.richiesto_il : null;
+  if(!d) return null;
+  const g=daysBetween(d, todayISO());
+  return g<0?null:g;
+}
 function rifCacheStorico(){
   if(RIF_STORICO!==null) return;
   try{ const c=localStorage.getItem('tcs_rifsto_'+TOKEN);
@@ -1224,15 +1244,34 @@ function viewStorico(){
             <button class="rifnmcancel" onclick="rifNotaOpen('${o.id}')">Annulla</button>
             <button class="rifnmsave" onclick="rifNotaSave('${o.id}')">${ic('check')}Salva nota</button>
           </div></div>` : '';
-    return `<div class="rifhist ${sel?'sel':''} ${selezionabile?'selettabile':''}" data-h="${esc(hay)}"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
-      <div class="rifhisth"><span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
+    // ── Scheda COMPATTA di default ──────────────────────────────────────
+    // Prima ogni ordine stampava tutto: percorso a 4 tappe, note, e un riquadro
+    // grande "Ricevuta / foto" che per un PDF non mostra nemmeno un'anteprima.
+    // Con quaranta ordini si scorreva all'infinito. Ora in lista restano solo le
+    // cose che servono a colpo d'occhio (via, cosa, in che fase, da quanto) e il
+    // resto si apre a richiesta. L'allegato e' una graffetta che apre il visore.
+    const aperta = RIF_OPEN.has(key);
+    const giorniFase = rifGiorniInFase(o);
+    const meta = giorniFase!=null
+      ? `<span class="rifhda${giorniFase>=3?' fermo':''}">${giorniFase===0?'oggi':'da '+giorniFase+(giorniFase===1?' giorno':' giorni')}</span>`
+      : '';
+    const clip = alleg.length
+      ? `<button class="rifclip" title="Ricevuta / foto (${alleg.length})"
+           onclick="event.stopPropagation();openLB('${key}',0)">${ic('camera')}<span>${alleg.length}</span></button>`
+      : '';
+    return `<div class="rifhist compatta ${sel?'sel':''} ${selezionabile?'selettabile':''} ${aperta?'aperta':''}"
+        data-h="${esc(hay)}" data-k="${key}">
+      <div class="rifhisth"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
+        <span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
         <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
-      ${detail?`<div class="rifhistp nolinea">${esc(detail)}</div>`:''}
-      ${rifTimeline(o)}
-      ${verifBox}
-      ${noteHtml}
-      ${notaInput}
-      ${thumbs}
+      <div class="rifhrow"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
+        <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}</div>
+        <div class="rifhact">${meta}${clip}
+          <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}"
+            onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
+        </div>
+      </div>
+      ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}${thumbs}`:''}
     </div>`;
   }).join('');
 
