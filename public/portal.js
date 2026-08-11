@@ -990,6 +990,11 @@ function histApplyFilter(){
     const show=!q||(c.dataset.h||'').includes(q);
     c.style.display=show?'':'none'; if(show)vis++;
   });
+  // gli indirizzi che restano senza righe spariscono, se no restano intestazioni vuote
+  document.querySelectorAll('.rifgrp').forEach(g=>{
+    const dentro=[...g.querySelectorAll('.rifhist')].some(c=>c.style.display!=='none');
+    g.style.display=dentro?'':'none';
+  });
   const em=document.getElementById('rifhempty'); if(em) em.style.display=vis?'none':'';
 }
 
@@ -1171,23 +1176,35 @@ function viewStorico(){
   let base=RIF_STORICO.slice();
   if(RIF_HAPT) base=base.filter(o=>o.via===RIF_HAPT);
   const cnt=f=>base.filter(o=>o.fase===f).length;
-  const FCH=[[null,'Tutti',null],['richiesto','Richiesti','#9A9183'],['ordinato','In arrivo','#3b6ea5'],
-             ['postale','In area posta','#2a8a80'],
-             ['magazzino','In magazzino','#b5892e'],['consegnato','Consegnati','#3f8f5e']];
-  // Numeri solo sugli stati ATTIVI (pipeline aperta): "Consegnati" cresce negli anni
-  // e il suo conteggio diventerebbe rumore. La lista carica comunque solo i piu' recenti.
-  const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col])=>{
-    const attivo=f&&f!=='consegnato';
-    const n=attivo?` <span class="rifhn">${cnt(f)}</span>`:'';
+  const aperti=base.filter(o=>o.fase!=='consegnato');
+  // ferme da troppo: roba aperta che non si muove da due settimane. E' quella su cui
+  // qualcuno deve alzare il telefono.
+  const ferme=aperti.filter(o=>{ const g=rifGiorniInFase(o); return g!=null && g>=14; });
+  const FCH=[[null,'Da seguire',null,aperti.length],
+             ['richiesto','Richiesti','#9A9183',cnt('richiesto')],
+             ['ordinato','In arrivo','#3b6ea5',cnt('ordinato')],
+             ['postale','In area posta','#2a8a80',cnt('postale')],
+             ['magazzino','In magazzino','#b5892e',cnt('magazzino')],
+             ['ferme','Ferme da 2+ settimane','#b23b2e',ferme.length],
+             ['consegnato','Consegnati','#3f8f5e',null]];
+  // Niente numero sui "Consegnati": cresce negli anni e diventerebbe rumore.
+  const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col,n])=>{
+    if(f==='ferme' && !ferme.length) return '';      // non si mostra se non serve
+    const num=(n!=null)?` <span class="rifhn">${n}</span>`:'';
     return `<button class="rifhchip ${RIF_HFASE===f?'on':''}" onclick="histSetFase(${f?`'${f}'`:'null'})">
-      ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${n}</button>`;
+      ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${num}</button>`;
   }).join('')}</div>`;
 
   const search=`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`;
 
   // ordina: prima le cose azionabili (magazzino, poi in arrivo, poi richiesti, consegnati in fondo), dentro per data
   let list=base.slice();
-  if(RIF_HFASE) list=list.filter(o=>o.fase===RIF_HFASE);
+  if(RIF_HFASE==='consegnato')      list=list.filter(o=>o.fase==='consegnato');
+  else if(RIF_HFASE==='ferme')      list=ferme.slice();
+  else if(RIF_HFASE)                list=list.filter(o=>o.fase===RIF_HFASE);
+  // Di default i CONSEGNATI restano fuori: sono la maggioranza delle righe e non
+  // chiedono niente. Si ritrovano col chip "Consegnati" e con la ricerca.
+  else                              list=aperti.slice();
   list.sort((a,b)=>{
     const fa=RIF_FASE_ORD[a.fase]??9, fb=RIF_FASE_ORD[b.fase]??9;
     if(fa!==fb) return fa-fb;
@@ -1195,6 +1212,7 @@ function viewStorico(){
   });
 
   const cards=list.map((o,i)=>{
+    o._i=i;
     let f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
     if(o.fase==='consegnato') f={lbl:'Consegnato in appartamento',col:'#3f8f5e'};
     const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
@@ -1261,11 +1279,10 @@ function viewStorico(){
       : '';
     return `<div class="rifhist compatta ${sel?'sel':''} ${selezionabile?'selettabile':''} ${aperta?'aperta':''}"
         data-h="${esc(hay)}" data-k="${key}">
-      <div class="rifhisth"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
-        <span class="rifha">${selBtn}${ic('pin')}<b>${esc(o.via)}</b></span>
-        <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
       <div class="rifhrow"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
-        <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}</div>
+        ${selBtn}
+        <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}
+          <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
         <div class="rifhact">${meta}${clip}
           <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}"
             onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
@@ -1275,9 +1292,25 @@ function viewStorico(){
     </div>`;
   }).join('');
 
+  // ── Raggruppate per INDIRIZZO ────────────────────────────────────────────
+  // Prima "Via dei Fabbri 11" compariva tre volte di fila con tre cose diverse.
+  // Raggruppato si legge "3 cose da portare li'": e' un viaggio solo. Stessa resa
+  // che ha funzionato in "Da fare".
+  const perVia={};
+  list.forEach((o,i)=>{ const v=o.via||'—'; (perVia[v]=perVia[v]||[]).push(cards[i]); });
+  const vieOrdinate=Object.keys(perVia).sort((a,b)=>
+    perVia[b].length-perVia[a].length || a.localeCompare(b));
+  const gruppi=vieOrdinate.map(v=>{
+    const n=perVia[v].length;
+    return `<div class="rifgrp">
+      <div class="rifgrph">${ic('pin')}<b>${esc(v)}</b>
+        <span class="rifgrpn">${n}</span></div>
+      ${perVia[v].join('')}</div>`;
+  }).join('');
+
   const empty=`<div id="rifhempty" class="empty-state" style="display:none">${ic('search')}<div class="t">Nessun risultato</div>Prova con un'altra parola.</div>`;
-  const body = list.length ? `<div class="rifhistlist">${cards}</div>${empty}`
-    : `<div class="empty-state">${ic('check')}<div class="t">Niente qui</div>Nessun ordine con questi filtri.</div>`;
+  const body = list.length ? `<div class="rifhistlist">${gruppi}</div>${empty}`
+    : `<div class="empty-state">${ic('check')}<div class="t">Tutto a posto</div>Niente da seguire con questi filtri.</div>`;
   // Il passato completo si carica solo quando serve. Ma sotto un filtro di fase ATTIVA
   // (Richiesti / In arrivo / In magazzino) gli articoli aperti sono gia' tutti caricati
   // (verificato: caricando tutto lo storico il conteggio non cambia), quindi il tasto

@@ -945,3 +945,25 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 /* quando e' aperta, i dettagli si staccano dalla riga */
 .rifhist.compatta.aperta .rift{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .rifhist.compatta .rifhdoc{margin-top:10px}
+
+/* ── Monitora raggruppata per indirizzo (11 ago 2026) ──────────────────────
+   La via si legge una volta sola in testa al gruppo: sotto restano solo le cose,
+   così si capisce a colpo d'occhio che a un indirizzo ce n'è più di una e ci si
+   va una volta sola. */
+.rifgrp{background:var(--white);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;margin-bottom:11px}
+.rifgrph{display:flex;align-items:center;gap:8px;padding:13px 15px 11px;
+  border-bottom:1px solid var(--line)}
+.rifgrph .ic{width:15px;height:15px;color:var(--greige);flex:none}
+.rifgrph b{font-family:var(--disp);font-weight:200;font-size:20px;color:var(--ink);
+  line-height:1.15;flex:1;min-width:0;overflow-wrap:anywhere}
+.rifgrpn{font-family:var(--light);font-size:12.5px;color:var(--greige-text);
+  background:var(--cream);border-radius:999px;min-width:23px;text-align:center;padding:2px 8px;flex:none}
+/* dentro il gruppo le schede perdono bordo e angoli propri: sono righe, non riquadri */
+.rifgrp .rifhist{border:none;border-radius:0;margin:0;padding:11px 15px;
+  border-top:1px solid var(--line)}
+.rifgrp .rifhist:first-of-type{border-top:none}
+.rifgrp .rifhist.sel{background:#f3efe8;box-shadow:inset 3px 0 0 var(--ink)}
+.rifhrow{display:flex;align-items:center;gap:10px;margin-top:0}
+.rifhcosa .rifhstato{margin-left:8px;vertical-align:middle;font-size:10px;padding:2px 8px}
+@media (min-width:720px){ .rifhistlist{display:grid;grid-template-columns:1fr 1fr;gap:11px;align-items:start} }
