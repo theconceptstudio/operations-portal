@@ -1178,19 +1178,14 @@ function viewStorico(){
   if(RIF_HAPT) base=base.filter(o=>o.via===RIF_HAPT);
   const cnt=f=>base.filter(o=>o.fase===f).length;
   const aperti=base.filter(o=>o.fase!=='consegnato');
-  // ferme da troppo: roba aperta che non si muove da due settimane. E' quella su cui
-  // qualcuno deve alzare il telefono.
-  const ferme=aperti.filter(o=>{ const g=rifGiorniInFase(o); return g!=null && g>=14; });
   const FCH=[[null,'Da seguire',null,aperti.length],
              ['richiesto','Richiesti','#9A9183',cnt('richiesto')],
              ['ordinato','In arrivo','#3b6ea5',cnt('ordinato')],
              ['postale','In area posta','#2a8a80',cnt('postale')],
              ['magazzino','In magazzino','#b5892e',cnt('magazzino')],
-             ['ferme','Ferme da 2+ settimane','#b23b2e',ferme.length],
              ['consegnato','Consegnati','#3f8f5e',null]];
   // Niente numero sui "Consegnati": cresce negli anni e diventerebbe rumore.
   const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col,n])=>{
-    if(f==='ferme' && !ferme.length) return '';      // non si mostra se non serve
     const num=(n!=null)?` <span class="rifhn">${n}</span>`:'';
     return `<button class="rifhchip ${RIF_HFASE===f?'on':''}" onclick="histSetFase(${f?`'${f}'`:'null'})">
       ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${num}</button>`;
@@ -1201,7 +1196,6 @@ function viewStorico(){
   // ordina: prima le cose azionabili (magazzino, poi in arrivo, poi richiesti, consegnati in fondo), dentro per data
   let list=base.slice();
   if(RIF_HFASE==='consegnato')      list=list.filter(o=>o.fase==='consegnato');
-  else if(RIF_HFASE==='ferme')      list=ferme.slice();
   else if(RIF_HFASE)                list=list.filter(o=>o.fase===RIF_HFASE);
   // Di default i CONSEGNATI restano fuori: sono la maggioranza delle righe e non
   // chiedono niente. Si ritrovano col chip "Consegnati" e con la ricerca.
