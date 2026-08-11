@@ -998,3 +998,5 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 .rifhda{font-family:var(--light);font-size:11.5px;color:var(--greige);white-space:nowrap}
 .rifhda.fermo{color:var(--p-vh);font-family:var(--body)}
 .rifhexp{flex:none;margin-top:-2px}
+/* Segnaposto invisibile: tiene la colonna allineata anche dove non si seleziona */
+.rifsel.vuoto{border-color:transparent;background:none;pointer-events:none}

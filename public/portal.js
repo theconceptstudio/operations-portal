@@ -1227,9 +1227,12 @@ function viewStorico(){
     // in entrambi i casi l'operatore la porta dentro e chiude il giro
     const selezionabile=(o.fase==='magazzino'||o.fase==='postale') && o.id;
     const sel=selezionabile && RIF_DSEL.has(o.id);
+    // Se la riga non e' selezionabile lo spazio del cerchio resta comunque
+    // riservato: se no i nomi e le etichette partono da due punti diversi e la
+    // colonna balla.
     const selBtn=selezionabile
       ? `<span class="rifsel ${sel?'on':''}">${sel?ic('check'):''}</span>`
-      : '';
+      : `<span class="rifsel vuoto" aria-hidden="true"></span>`;
     // STEP INTERNO (solo operatore): quando la roba è "in magazzino" l'operatore
     // chiama il magazzino e spunta "presenza verificata". Non va su Notion.
     const ver=!!o.verificato;
