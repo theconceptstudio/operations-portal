@@ -1243,6 +1243,13 @@ function viewStorico(){
     // magazzino (l'operatore chiama e si fa confermare che la merce c'e' davvero).
     // Per un pacco in area posta non ha senso: ci si va e si vede. Li' resta solo
     // la nota, che serve sempre.
+    // L'allegato NON sta nella riga compatta: quasi sempre e' un PDF, non si
+    // apre quasi mai, e li' rubava spazio alla lettura veloce. Sta dentro, nella
+    // riga delle azioni, come tasto vero accanto a Nota.
+    const clip = alleg.length
+      ? `<button class="rifallg" onclick="event.stopPropagation();openLB('${key}',0)">
+           ${ic('clip')}Allegato${alleg.length>1?' ('+alleg.length+')':''}</button>`
+      : '';
     const nota=`<button class="rifvnota" onclick="event.stopPropagation();rifNotaOpen('${o.id}')" title="Aggiungi una nota per l'ufficio">${ic('message')}Nota</button>`;
     const verifBox = o.fase==='magazzino'
       ? `<div class="rifverif ${ver?'ok':''}">
@@ -1273,13 +1280,6 @@ function viewStorico(){
     const giorniFase = rifGiorniInFase(o);
     const meta = giorniFase!=null
       ? `<span class="rifhda${giorniFase>=3?' fermo':''}">${giorniFase===0?'oggi':'da '+giorniFase+(giorniFase===1?' giorno':' giorni')}</span>`
-      : '';
-    // L'allegato NON sta nella riga compatta: quasi sempre e' un PDF, non si
-    // apre quasi mai, e li' rubava spazio alla lettura veloce. Sta dentro, nella
-    // riga delle azioni, come tasto vero accanto a Nota.
-    const clip = alleg.length
-      ? `<button class="rifallg" onclick="event.stopPropagation();openLB('${key}',0)">
-           ${ic('clip')}Allegato${alleg.length>1?' ('+alleg.length+')':''}</button>`
       : '';
     return `<div class="rifhist compatta ${sel?'sel':''} ${selezionabile?'selettabile':''} ${aperta?'aperta':''}"
         data-h="${esc(hay)}" data-k="${key}">
