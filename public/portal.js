@@ -1204,7 +1204,10 @@ function viewStorico(){
       ? `<div class="rifverif ${ver?'ok':''}">
           <button class="rifvchk" onclick="event.stopPropagation();rifVerifica('${o.id}',${ver?'false':'true'})">
             <span class="rifvbox ${ver?'on':''}">${ver?ic('check'):''}</span>
-            ${ver?'Presenza verificata in magazzino':'Verifica presenza in magazzino'}</button>
+            ${(function(){
+              const dove = o.fase==='postale' ? 'in area posta' : 'in magazzino';
+              return ver ? ('Presenza verificata '+dove) : ('Verifica presenza '+dove);
+            })()}</button>
           <button class="rifvnota" onclick="event.stopPropagation();rifNotaOpen('${o.id}')" title="Aggiungi una nota per l'ufficio">${ic('message')}Nota</button>
         </div>` : '';
     // note del magazzino (timestampate, arrivano dal campo Note su Notion)
