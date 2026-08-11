@@ -1003,11 +1003,11 @@ const RIF_URG_OPT=[['1w','~1 settimana','Urgente'],['2w','~2 settimane','Normale
 const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato':'#3f8f5e','Reso':'#8a6d3b'};
 /* Ciclo di vita di un ordine, come lo vede l'operatore */
 const RIF_FASE={
-  richiesto:  {lbl:'Richiesto',                col:'#9A9183'},
-  ordinato:   {lbl:'Ordine fatto · in arrivo', col:'#3b6ea5'},
-  postale:    {lbl:'In area posta',            col:'#2a8a80'},
-  magazzino:  {lbl:'In magazzino',             col:'#b5892e'},
-  consegnato: {lbl:'Consegnato',               col:'#3f8f5e'},
+  richiesto:  {lbl:'Richiesto',      col:'#9A9183', bg:'#f2efe9', fg:'#7a7168'},
+  ordinato:   {lbl:'In arrivo',      col:'#3b6ea5', bg:'#e9f0f8', fg:'#2f5d8f'},
+  postale:    {lbl:'In area posta',  col:'#2a8a80', bg:'#eef6f5', fg:'#1f6f66'},
+  magazzino:  {lbl:'In magazzino',   col:'#b5892e', bg:'#f9f0e0', fg:'#8a5a10'},
+  consegnato: {lbl:'Consegnato',     col:'#3f8f5e', bg:'#edf4ef', fg:'#33734c'},
 };
 // L'area posta viene per prima: il pacco sta in uno spazio comune del condominio,
 // va recuperato appena si passa. E' il caso che era sfuggito a Torrebianca 18.
@@ -1209,7 +1209,7 @@ function viewStorico(){
   const cards=list.map((o,i)=>{
     o._i=i;
     let f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
-    if(o.fase==='consegnato') f={lbl:'Consegnato in appartamento',col:'#3f8f5e'};
+
     const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
     const detail=prod||(o.descrizione||'').trim();
     const hay=rifNorm(`${o.via} ${detail} ${o.stato||''} ${f.lbl}`);
@@ -1279,12 +1279,15 @@ function viewStorico(){
         data-h="${esc(hay)}" data-k="${key}">
       <div class="rifhrow"${selezionabile?` onclick="rifDSel('${o.id}')"`:''}>
         ${selBtn}
-        <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}
-          <span class="rifhstato pieno" style="background:${f.col};border-color:${f.col}">${esc(f.lbl)}</span></div>
-        <div class="rifhact">${meta}
-          <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}" aria-label="${aperta?'Chiudi':'Dettagli'}"
-            onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
+        <div class="rifhmain">
+          <div class="rifhcosa">${detail?esc(detail):'<i>senza dettaglio</i>'}</div>
+          <div class="rifhmeta">
+            <span class="rifhtag" style="background:${f.bg};color:${f.fg}">${esc(f.lbl)}</span>
+            ${meta}
+          </div>
         </div>
+        <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}" aria-label="${aperta?'Chiudi':'Dettagli'}"
+          onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
       </div>
       ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}`:''}
     </div>`;
