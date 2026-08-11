@@ -159,16 +159,22 @@ function ancoraA(chiave){
   ANCORA = el ? {chiave, top: el.getBoundingClientRect().top} : null;
 }
 function ripristinaAncora(){
-  if(!ANCORA) return;
+  if(!ANCORA) return false;
   const el=document.querySelector(`[data-k="${ANCORA.chiave}"]`);
+  const trovato=!!el;
   if(el){
     const delta=el.getBoundingClientRect().top - ANCORA.top;
     if(delta) window.scrollBy(0, delta);
   }
   ANCORA=null;
+  return trovato;
 }
+/* Da chiamare solo quando si vuole DAVVERO ripartire dall'alto (cambio di tab). */
+let VAI_SU=false;
+function vaiSu(){ VAI_SU=true; }
 
 function render(){
+  const yPrima=window.scrollY;
   const c=counts();
   const nCart=RIF_CART.size+RIF_CUSTOM.length;
   const view = TAB==='dafare'?viewDaFare() : TAB==='pulizie'?viewPulizie() : viewRifornimenti();
@@ -183,9 +189,13 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && RIF_APT && RIF_Q) rifApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
-  ripristinaAncora();
+  // 1) ancora precisa su un elemento (apri/chiudi una scheda) 2) altrimenti si
+  // resta esattamente dove si era 3) solo il cambio tab riparte dall'alto.
+  const conAncora=ripristinaAncora();
+  if(VAI_SU){ VAI_SU=false; window.scrollTo(0,0); }
+  else if(!conAncora) window.scrollTo(0, yPrima);
 }
-function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ RIF_VIEW='storico'; rifEnsureApts(); rifCacheStorico(); rifLoadStorico(); } render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); vaiSu(); if(t==='rifornimenti'){ RIF_VIEW='storico'; rifEnsureApts(); rifCacheStorico(); rifLoadStorico(); } render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k, eraAperto){
   ancoraA('apt:'+k);
