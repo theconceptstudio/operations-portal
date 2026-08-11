@@ -53,7 +53,7 @@ function setPView(v){ PVIEW=v; render(); }
 /* ── Rifornimenti (carrello) ─────────────────────────────────────────── */
 let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
     RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
-    RIF_VIEW='catalogo', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='',
+    RIF_VIEW='storico', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='',
     RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='', RIF_CURSOR=null, RIF_HASMORE=false;
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
@@ -96,7 +96,7 @@ function saveUI(){ try{ localStorage.setItem(UI_KEY, JSON.stringify({tab:TAB, ri
 async function load(){
   // Se al refresh sei ripartito sulla tab Rifornimenti, carica i suoi dati
   // (altrimenti resteresti su "Carico…" perche' setTab non e' stato chiamato).
-  if(TAB==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); }
+  if(TAB==='rifornimenti'){ rifEnsureApts(); rifCacheStorico(); if(RIF_STORICO===null) rifLoadStorico(); }
   // 1. mostra subito l'ultimo stato salvato (apertura istantanea)
   try{ const c=localStorage.getItem(CACHE_KEY); if(c){ DATA=JSON.parse(c); render(); setupAutoRefresh(); } }catch(_){}
   // 2. aggiorna dal server in sottofondo
@@ -185,7 +185,7 @@ function render(){
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
   ripristinaAncora();
 }
-function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); } render(); }
+function setTab(t){ TAB=t; OPEN_CARDS.clear(); saveUI(); if(t==='rifornimenti'){ RIF_VIEW='storico'; rifEnsureApts(); rifCacheStorico(); rifLoadStorico(); } render(); }
 function goOggi(){ WEEK0=mondayOf(todayISO()); SEL=todayISO(); render(); }
 function toggleApt(k, eraAperto){
   ancoraA('apt:'+k);
@@ -856,13 +856,15 @@ function rifDoneStorico(){ RIF_DONE=null; rifShowStorico(); }
 
 /* Cronologia ordini */
 let RIF_LOADEDMORE=false;
+function rifCacheStorico(){
+  if(RIF_STORICO!==null) return;
+  try{ const c=localStorage.getItem('tcs_rifsto_'+TOKEN);
+    if(c){ const j=JSON.parse(c); RIF_STORICO=j.s; RIF_CURSOR=j.c; RIF_HASMORE=j.h; } }catch(_){}
+}
 function rifShowStorico(){
   RIF_VIEW='storico'; RIF_HQ=''; RIF_HAPT=null; RIF_HFASE=null; RIF_DSEL=new Set(); RIF_LOADEDMORE=false; saveUI();
   // 1. mostra SUBITO l'ultimo stato salvato (apertura istantanea)…
-  if(RIF_STORICO===null){
-    try{ const c=localStorage.getItem('tcs_rifsto_'+TOKEN);
-      if(c){ const j=JSON.parse(c); RIF_STORICO=j.s; RIF_CURSOR=j.c; RIF_HASMORE=j.h; } }catch(_){}
-  }
+  rifCacheStorico();
   render();
   // 2. …e intanto arriva il dato fresco da Notion (live)
   rifLoadStorico();
@@ -967,10 +969,13 @@ const RIF_STATO_COL={'Da acquistare':'#b23b2e','Da pagare':'#3b6ea5','Acquistato
 const RIF_FASE={
   richiesto:  {lbl:'Richiesto',                col:'#9A9183'},
   ordinato:   {lbl:'Ordine fatto · in arrivo', col:'#3b6ea5'},
+  postale:    {lbl:'In area posta',            col:'#2a8a80'},
   magazzino:  {lbl:'In magazzino',             col:'#b5892e'},
   consegnato: {lbl:'Consegnato',               col:'#3f8f5e'},
 };
-const RIF_FASE_ORD={magazzino:0, ordinato:1, richiesto:2, consegnato:3};  // prima le cose azionabili
+// L'area posta viene per prima: il pacco sta in uno spazio comune del condominio,
+// va recuperato appena si passa. E' il caso che era sfuggito a Torrebianca 18.
+const RIF_FASE_ORD={postale:0, magazzino:1, ordinato:2, richiesto:3, consegnato:4};
 /* Percorso del pacco: pipeline completa fino alla consegna in appartamento */
 // Elenco eventi per esteso (etichetta + data): meno ambiguo dei soli pallini,
 // l'operatore vede subito cos'e' successo e quando. Righe strette per risparmiare
@@ -978,9 +983,11 @@ const RIF_FASE_ORD={magazzino:0, ordinato:1, richiesto:2, consegnato:3};  // pri
 function rifTimeline(o){
   const inCasa = o.luogo==='Appartamento';
   const passi = inCasa ? [
-    {lbl:'Richiesto',                  d:o.richiesto_il},
-    {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
-    {lbl:'Consegnato in appartamento', d:o.portato_il||o.data_consegna},
+    {lbl:'Richiesto',                    d:o.richiesto_il},
+    {lbl:'Ordine fatto (in arrivo)',     d:o.ordinato_il},
+    // il corriere lascia il pacco all'indirizzo: e' in area posta, non ancora in casa
+    {lbl:'Arrivato in area posta',       d:o.in_posta_il||o.data_consegna},
+    {lbl:'Portato dentro casa',          d:o.portato_il},
   ] : [
     {lbl:'Richiesto',                  d:o.richiesto_il},
     {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
@@ -1135,6 +1142,7 @@ function viewStorico(){
   if(RIF_HAPT) base=base.filter(o=>o.via===RIF_HAPT);
   const cnt=f=>base.filter(o=>o.fase===f).length;
   const FCH=[[null,'Tutti',null],['richiesto','Richiesti','#9A9183'],['ordinato','In arrivo','#3b6ea5'],
+             ['postale','In area posta','#2a8a80'],
              ['magazzino','In magazzino','#b5892e'],['consegnato','Consegnati','#3f8f5e']];
   // Numeri solo sugli stati ATTIVI (pipeline aperta): "Consegnati" cresce negli anni
   // e il suo conteggio diventerebbe rumore. La lista carica comunque solo i piu' recenti.
@@ -1172,7 +1180,9 @@ function viewStorico(){
         ? `<button class="thumb vid" onclick="event.stopPropagation();openLB('${key}',${j})" title="${esc(allegName(a,j))}">${ic('play')}</button>`
         : `<button class="thumb" onclick="event.stopPropagation();openLB('${key}',${j})" title="${esc(allegName(a,j))}" style="background-image:url('${esc(a.url)}')"></button>`).join('')}</div></div>`:'';
     // la merce in magazzino si può selezionare per confermare la consegna in casa
-    const selezionabile=o.fase==='magazzino' && o.id;
+    // si seleziona sia la merce in magazzino sia quella ferma in area posta:
+    // in entrambi i casi l'operatore la porta dentro e chiude il giro
+    const selezionabile=(o.fase==='magazzino'||o.fase==='postale') && o.id;
     const sel=selezionabile && RIF_DSEL.has(o.id);
     const selBtn=selezionabile
       ? `<span class="rifsel ${sel?'on':''}">${sel?ic('check'):''}</span>`

@@ -526,11 +526,21 @@ def rif_storico(token):
         ordinato = stato in ('Acquistato', 'Da pagare')
         # REGOLA: Luogo di consegna VUOTO = Magazzino (default). "Appartamento" vale
         # solo se Andres lo seleziona esplicitamente: cosi' il pregresso non va toccato.
-        # Pipeline a 4 fasi, come la vede l'operatore:
-        # richiesto -> ordinato (in arrivo) -> magazzino -> consegnato in appartamento.
-        # Se il luogo di consegna e' l'appartamento, la spunta di Andres chiude tutto.
-        if portato or (luogo == 'Appartamento' and consegna):
-            fase = 'consegnato'
+        #
+        # Pipeline a 5 fasi, come la vede l'operatore:
+        #   richiesto -> ordinato (in arrivo) -> magazzino ------\
+        #                                     -> IN AREA POSTA --> consegnato in appartamento
+        #
+        # ⚠️ "In area posta" (aggiunta 11 ago 2026, caso vero di Torrebianca 18):
+        # quando il corriere consegna all'indirizzo dell'appartamento, il pacco NON e'
+        # dentro casa: sta nell'area posta del condominio, e qualcuno deve andarlo a
+        # prendere. Prima questo caso veniva chiuso come "consegnato" e spariva dalle
+        # cose da fare: un pacco e' rimasto li' senza che nessuno avvisasse le pulizie.
+        # Adesso resta APERTO finche' l'operatore non spunta di averlo portato dentro.
+        if portato:
+            fase = 'consegnato'                       # spunta messa: e' davvero dentro casa
+        elif luogo == 'Appartamento' and consegna:
+            fase = 'postale'                          # consegnato all'indirizzo, sta in area posta
         elif magazzino or consegna:
             fase = 'magazzino'
         elif ordinato:
@@ -550,14 +560,15 @@ def rif_storico(token):
             'descrizione': descr,   # ordini vecchi/manuali: il contenuto è nel titolo
             'fase': fase,
             'luogo': luogo,                 # Appartamento (arriva dritto in casa) o Magazzino
-            'portato_il': portato_il or (consegna if (luogo == 'Appartamento' and consegna) else None),
+            'portato_il': portato_il,       # solo se la spunta c'e' davvero
+            'in_posta_il': consegna if fase == 'postale' else None,
             # i quattro momenti del percorso del pacco
             'richiesto_il': richiesto_il,
             'ordinato_il': acquisto if ordinato else None,
             'arrivo_magazzino': magazzino,
             'data_consegna': consegna,
             # finestra di consegna: dal magazzino si porta in casa quando c'è la pulizia
-            'prossima_consegna': (prossima.get(aid) if (fase != 'consegnato' and luogo != 'Appartamento') else None),
+            'prossima_consegna': (prossima.get(aid) if fase in ('magazzino', 'postale') else None),
             'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
             'note_magazzino': note_magazzino,               # note del responsabile magazzino (timestampate)
             'verificato': False,                            # riempito sotto dal mirror operatore
@@ -774,7 +785,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20260809g">
+<link rel=stylesheet href="/portal.css?v=20260811a">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -792,7 +803,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20260809g"></script>
+<script src="/portal.js?v=20260811a"></script>
 </body></html>"""
 
 if __name__ == '__main__':
