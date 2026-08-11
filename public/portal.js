@@ -564,7 +564,7 @@ function corsiaFoto(arr, extra){
     // veri e vanno confermati come gli altri. Prima restavano righe con il tasto Foto,
     // quindi il blocco usciva mezzo spuntabile e mezzo no.
     if(SELMODE || OPEN_CARDS.has(key)) return iCard(x,x._kind,true,false);
-    return `<div class="grow${i===0?' first':''}" data-k="${key}">
+    return `<div class="dfrow${i===0?' first':''}" data-k="${key}">
       <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
       <div class="gmain" onclick="toggleCard('${key}')">
         <div class="gtitle">${esc(titoloDi(x))}</div>
@@ -619,7 +619,7 @@ function rigaItem(x, first, segnaRitardo){
     istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
     x.confermato_manutentore?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
   ].filter(Boolean).join('');
-  return `<div class="grow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" data-k="${key}" onclick="toggleCard('${key}')">
+  return `<div class="dfrow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" data-k="${key}" onclick="toggleCard('${key}')">
     <span class="ipdot" style="background:${c}" title="${esc(P_LBL[x.priorita]||'')}"></span>
     <div class="gmain"><div class="gtitle">${esc(titoloDi(x))}</div>
       ${tags?`<div class="gmeta">${tags}</div>`:''}</div>
@@ -1168,7 +1168,7 @@ function viewStorico(){
   if(!RIF_STORICO.length) return `<div class="empty-state">${ic('info')}<div class="t">Nessun ordine ancora</div>Quando invii un ordine comparirà qui.</div>`;
 
   // filtro appartamento (via)
-  const aptChips = RIF_APTS && RIF_APTS.length>1 ? `<div class="rifhchips">
+  const aptChips = RIF_APTS && RIF_APTS.length>1 ? `<div class="rifhchips vie">
     <button class="rifhchip ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutte le vie</button>
     ${RIF_APTS.map(a=>`<button class="rifhchip ${RIF_HAPT===a.via?'on':''}" onclick="histSetApt('${esc(a.via).replace(/'/g,"\\'")}')">${ic('pin')}${esc(a.via)}</button>`).join('')}
   </div>` : '';
@@ -1185,7 +1185,7 @@ function viewStorico(){
              ['magazzino','In magazzino','#b5892e',cnt('magazzino')],
              ['consegnato','Consegnati','#3f8f5e',null]];
   // Niente numero sui "Consegnati": cresce negli anni e diventerebbe rumore.
-  const faseChips=`<div class="rifhchips">${FCH.map(([f,lbl,col,n])=>{
+  const faseChips=`<div class="rifhchips fasi">${FCH.map(([f,lbl,col,n])=>{
     const num=(n!=null)?` <span class="rifhn">${n}</span>`:'';
     return `<button class="rifhchip ${RIF_HFASE===f?'on':''}" onclick="histSetFase(${f?`'${f}'`:'null'})">
       ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${num}</button>`;
@@ -1333,7 +1333,7 @@ function viewStorico(){
       <button class="selconf" onclick="rifConsegna()">${ic('check')}Consegnato in appartamento</button>
     </div></div>` : '';
 
-  return aptChips+faseChips+search+body+more+`<div class="riffabsp"></div>`+dbar;
+  return faseChips+aptChips+search+body+more+`<div class="riffabsp"></div>`+dbar;
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */
