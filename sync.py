@@ -89,6 +89,23 @@ def sb_upsert(table, rows):
     if not (SUPABASE_URL and SUPABASE_KEY):
         print(f'  [skip] Supabase non configurato — {table}: {len(rows)} righe pronte (dry)')
         return 0
+    # ⚠️ RETE DI SICUREZZA (14 ago 2026): Supabase fa UN SOLO INSERT per l'intero
+    # batch e pretende le STESSE colonne su OGNI riga. Se anche solo una riga ha
+    # una chiave in meno (es. un campo aggiunto con logica condizionale altrove),
+    # rifiuta l'INTERO batch con "PGRST102 All object keys must match" — bloccando
+    # il sync dell'intera tabella, non solo di quella riga, finche' nessuno se ne
+    # accorge. E' successo davvero il 9-14 ago: una singola manutenzione nuova ha
+    # fermato gli aggiornamenti di op_issues per giorni. Qui si pareggiano le
+    # chiavi PRIMA di spedire, cosi' un domani un bug simile in un'altra funzione
+    # non puo' piu' bloccare tutto in silenzio.
+    tutte_le_chiavi = set()
+    for row in rows: tutte_le_chiavi.update(row.keys())
+    pareggiate = []
+    for row in rows:
+        r = dict.fromkeys(tutte_le_chiavi, None)
+        r.update(row)
+        pareggiate.append(r)
+    rows = pareggiate
     headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}',
                'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'}
     # batch da 200
@@ -150,7 +167,18 @@ def _segna_istruzioni_cambiate(table, rows):
         h = hashlib.sha1(testo.encode('utf-8')).hexdigest() if testo else ''
         p = prev.get(row['notion_id'])
         row['istruzioni_hash'] = h
+        # ⚠️ BUG CORRETTO (14 ago 2026): per una riga NUOVA questo "continue" usciva
+        # senza mai scrivere istruzioni_agg_il/istruzioni_viste_il, mentre tutte le
+        # altre righe del batch le avevano. Supabase fa UN SOLO INSERT per l'intero
+        # batch e pretende le STESSE colonne su ogni riga: con chiavi diverse rifiuta
+        # tutto con "PGRST102 All object keys must match" — e "tutto" significa
+        # l'intera tabella op_issues/op_tasks, non solo la riga nuova. E' bastata UNA
+        # manutenzione nuova per bloccare il sync di ENTRAMBE le tabelle da allora:
+        # niente più date aggiornate, niente più reset di "Confermato" dopo una
+        # ricalendarizzazione, fino a quando qualcuno non lo notava.
         if p is None:
+            row['istruzioni_agg_il'] = None
+            row['istruzioni_viste_il'] = None
             continue                                   # riga nuova: niente da segnalare
         row['istruzioni_viste_il'] = p.get('istruzioni_viste_il')
         # Senza un'impronta precedente non sappiamo se il testo è cambiato: è la prima
