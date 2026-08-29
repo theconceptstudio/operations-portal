@@ -1552,8 +1552,20 @@ let PENDING=null;
    dopo tre conferme lo chiuderebbe d'istinto e non servirebbe più a niente.
    Si può saltare: se lo salta resta scritto nelle note che ha chiuso senza prova. */
 let FOTO_ASK=null;
-function chiediFoto(kind,id,wantFoto){
+async function chiediFoto(kind,id,wantFoto){
   if(!wantFoto){ conferma(kind,id); return; }
+  // Bug reale (29 ago 2026): il promemoria "Hai la foto?" chiedeva sempre, anche quando
+  // l'operatore aveva GIA' caricato la foto un attimo prima con "Foto / Video" — risultato:
+  // toccava "Salta" per abitudine e la nota diceva "confermato senza foto" nonostante la foto
+  // ci fosse davvero. Ora controlla gli allegati caricati dal portale (campo "chi" valorizzato,
+  // diverso da quelli aggiunti dall'ufficio su Notion che hanno chi=null) prima di chiedere.
+  const key=kind+':'+id;
+  if(!ALLEG[key]){
+    try{ const r=await fetch(`${API}/allegati/${kind}/${id}`,{cache:'no-store'});
+      const j=await r.json(); if(j&&j.ok) ALLEG[key]=j.allegati; }catch(_){}
+  }
+  const giaCaricataDaOperatore=(ALLEG[key]||[]).some(a=>a&&a.url&&a.chi);
+  if(giaCaricataDaOperatore){ conferma(kind,id); return; }
   FOTO_ASK={kind,id}; render();
 }
 function chiudiChiediFoto(){ FOTO_ASK=null; render(); }

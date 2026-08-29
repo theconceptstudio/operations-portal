@@ -803,7 +803,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20260811n"></script>
+<script src="/portal.js?v=20260829a"></script>
 </body></html>"""
 
 if __name__ == '__main__':
