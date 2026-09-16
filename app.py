@@ -474,13 +474,11 @@ def rif_storico(token):
     apt = apt_map()
     # Paginato: la prima chiamata porta i 40 piu' recenti (apertura veloce),
     # "Mostra ordini piu' vecchi" richiama con ?cursor= e va indietro nel tempo.
-    # L'operatore vede la categoria Rifornimenti Scorte + qualunque acquisto di
-    # altre categorie con la spunta "Mostra su app operatore" (es. lampadine in
-    # Manutenzioni che deve sapere che sono arrivate).
-    q = {'filter': {'or': [
-             {'property': 'Categoria', 'select': {'equals': 'Rifornimenti Scorte'}},
-             {'property': 'Mostra su app operatore', 'checkbox': {'equals': True}},
-         ]},
+    # FIX 16 set 2026 (Andres): regola unica di visibilita' — nessuna spesa affluisce di
+    # default, l'operatore vede SOLO quelle con "Mostra su app operatore" spuntato (tolta
+    # l'eccezione automatica che prima mostrava sempre la categoria Rifornimenti Scorte;
+    # quelle gia' esistenti sono state spuntate una per una prima di questo fix).
+    q = {'filter': {'property': 'Mostra su app operatore', 'checkbox': {'equals': True}},
          'sorts': [{'property': 'Data Acquisto', 'direction': 'descending'}], 'page_size': 40}
     cur = request.args.get('cursor')
     if cur: q['start_cursor'] = cur
@@ -594,8 +592,8 @@ def rif_storico(token):
 def rif_consegna(token):
     """L'operatore conferma di aver PORTATO IN APPARTAMENTO la merce selezionata
     (in una certa data). Spunta su Notion 'Portato in appartamento' + 'Portato il':
-    Andres vede la checkbox e sa che la roba e' in casa. Solo pagine Rifornimenti
-    Scorte dei SUOI appartamenti."""
+    Andres vede la checkbox e sa che la roba e' in casa. Solo pagine con "Mostra su
+    app operatore" spuntato, dei SUOI appartamenti."""
     op = operatore_by_token(token)
     if not op: return jsonify({'ok': False, 'error': 'token'}), 404
     d = request.get_json(force=True)
@@ -608,12 +606,12 @@ def rif_consegna(token):
         try:
             page = n_get(pid)
             pr = page.get('properties', {})
-            cat = ((pr.get('Categoria', {}) or {}).get('select') or {}).get('name')
             mostra = bool((pr.get('Mostra su app operatore', {}) or {}).get('checkbox'))
             rel = [x['id'].replace('-', '') for x in (pr.get('Appartamento', {}) or {}).get('relation', [])]
-            # Confermabile se e' visibile all'operatore: Rifornimenti Scorte OPPURE
-            # marcato "Mostra su app operatore" — e appartiene a un suo appartamento.
-            if (cat != 'Rifornimenti Scorte' and not mostra) or not (set(rel) & my):
+            # FIX 16 set 2026 (Andres): confermabile solo se marcato "Mostra su app operatore"
+            # (tolta l'eccezione automatica per Categoria=Rifornimenti Scorte) — e appartiene
+            # a un suo appartamento.
+            if not mostra or not (set(rel) & my):
                 errori += 1; continue
             n_patch(pid, {'Consegnato in appartamento': {'checkbox': True},
                           'Consegnato in appartamento il': {'date': {'start': quando}}})
@@ -717,6 +715,11 @@ def rifornimento(token):
         'Data Acquisto': {'date': {'start': oggi.date().isoformat()}},
         'Note': {'rich_text': [{'text': {'content': nota_sunto}}]},
         'Appartamento': {'relation': [{'id': _dash(apt_id)}]},
+        # FIX 16 set 2026: con la regola unica ("Mostra su app operatore" spuntato = visibile,
+        # nient'altro), un ordine che l'operatore ha appena creato da qui deve restare visibile
+        # a lui di default — altrimenti sparirebbe dalla propria cronologia rifornimenti finché
+        # qualcuno non lo spunta a mano su Notion.
+        'Mostra su app operatore': {'checkbox': True},
     }
 
     # Corpo pagina: intestazione (callout + bullet leggibili) + checklist prodotti per area
