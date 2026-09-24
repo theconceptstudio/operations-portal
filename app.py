@@ -4,7 +4,7 @@ Operations Portal — app operatori/manutentori (Flask).
 Accesso senza password via link /o/<token>. Legge il mirror Supabase (op_*),
 scrive su Notion solo le conferme (staff propone, ufficio dispone).
 """
-import os, datetime, time
+import os, re, datetime, time
 from concurrent.futures import ThreadPoolExecutor
 import requests
 from flask import Flask, request, jsonify, send_from_directory, redirect
@@ -511,7 +511,12 @@ def rif_storico(token):
         # Il campo Note contiene l'elenco prodotti ("Prodotti (N): …") e, se il
         # responsabile magazzino ne ha aggiunte, righe-nota timestampate "[gg/mm HH:MM] …".
         # Le separo: i prodotti restano puliti, le note magazzino vanno a parte.
-        note = ' '.join(l for l in note_raw.split('\n') if not l.strip().startswith('['))
+        # FIX 24 set 2026 (Andres): le Note sono INTERNE. Diventano "prodotti" solo se sono
+        # il riepilogo scritto dall'app ("Prodotti (N): ..."); qualsiasi altra nota (es.
+        # "coperto da ospite/aircover") NON deve mai finire al posto del nome della spesa:
+        # in quel caso l'operatore vede il titolo (Descrizione).
+        note = next((l.strip() for l in note_raw.split('\n')
+                     if re.match(r'^\s*Prodotti \(\d+\):', l)), '')
         note_magazzino = [l.strip() for l in note_raw.split('\n') if l.strip().startswith('[')]
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
