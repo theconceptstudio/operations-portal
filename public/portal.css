@@ -278,6 +278,16 @@ svg{display:block}
   background-position:center;display:block;flex:none}
 .thumb.vid{background:var(--ink);display:flex;align-items:center;justify-content:center;color:var(--cream)}
 .thumb.vid .ic{width:22px;height:22px}
+.thumb.exp{background:#fdf1ef;border:1px dashed var(--p-vh);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;color:var(--p-vh)}
+.thumb.exp .ic{width:18px;height:18px}
+.thumb.exp span{font-family:var(--light);font-size:8px;letter-spacing:1.5px}
+.lbth.exp{background:#fdf1ef;display:flex;align-items:center;justify-content:center;color:var(--p-vh)}
+.lbth.exp .ic{width:20px;height:20px}
+.lbmedia.lbexpired{background:#fdf1ef;color:var(--p-vh);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;text-align:center;padding:32px;
+  font-family:var(--body);font-size:13px;line-height:1.5;max-width:340px}
+.lbmedia.lbexpired .ic{width:32px;height:32px}
 
 .notebtn{margin-top:12px;width:100%;background:none;border:1px dashed var(--line-2);border-radius:10px;
   padding:12px;font-family:var(--light);font-size:13px;color:var(--greige-text);cursor:pointer;

@@ -101,19 +101,34 @@ def _now_rome():
         return datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # fallback ora legale IT
 
 def _allegati_of(page, prop='Allegati'):
-    """Lista file di una proprieta' file: [{name, url, video}]. Gestisce sia i file esterni (Supabase,
-    caricati dall'operatore) sia quelli caricati su Notion dall'ufficio (url firmato che rinfreschiamo
-    ad ogni lettura)."""
+    """Lista file di una proprieta' file: [{name, url, video, scaduto}]. Gestisce sia i file esterni
+    (Supabase, caricati dall'operatore) sia quelli caricati su Notion dall'ufficio (url firmato che
+    rinfreschiamo ad ogni lettura).
+    FIX 27 set 2026 (Andres): un video su un'Issue non si apriva per nessuno. Causa: non era stato
+    trascinato dentro il campo Allegati come file vero (che Notion tiene come 'file' e ri-firma ad ogni
+    lettura, come tutti gli altri) ma incollato come LINK ESTERNO a un url di download temporaneo di
+    Notion stesso (file.notion.com/... con 'expirationTimestamp'): quel link scade da solo (era gia'
+    scaduto da ~2 mesi) e Notion non lo rinnova mai perche' per Notion e' un link esterno qualsiasi, non
+    un file suo. Qui rileviamo lo scadenzario incorporato nell'URL e segnaliamo 'scaduto' invece di
+    mostrare un player rotto senza spiegazione."""
     files = (page.get('properties', {}).get(prop, {}) or {}).get('files', []) or []
     out = []
     for f in files:
+        is_external = 'external' in f
         url = (f.get('external') or f.get('file') or {}).get('url', '')
         if not url:
             continue
         name = f.get('name', '')
         low = (name + url).lower()
         video = any(low.split('?')[0].endswith(e) for e in ('.mp4', '.mov', '.webm', '.m4v', '.avi'))
-        out.append({'name': name, 'url': url, 'video': video})
+        scaduto = False
+        if is_external:
+            m = re.search(r'[?&]expirationTimestamp=(\d+)', url)
+            if m and int(m.group(1)) < int(time.time() * 1000):
+                scaduto = True
+            if not name or name.lower().startswith('http'):
+                name = url.split('/')[-1].split('?')[0] or 'file'
+        out.append({'name': name, 'url': url, 'video': video, 'scaduto': scaduto})
     return out
 
 def _traccia_allegato(url, item_id, chi):

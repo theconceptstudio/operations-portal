@@ -1458,7 +1458,9 @@ function allegThumbsHtml(list,key){
   if(!list.length) return '';
   const thumbs=list.map((a,i)=>{
     const nome=esc(allegName(a,i));
-    return isPdfA(a)
+    return a.scaduto
+      ? `<button class="thumb exp" onclick="openLB('${key}',${i})" title="Link scaduto">${ic('info')}<span>Scaduto</span></button>`
+      : isPdfA(a)
       ? `<button class="thumb doc" onclick="openLB('${key}',${i})" title="${nome}">${ic('clipboard')}<span>PDF</span></button>`
       : a.video
       ? `<button class="thumb vid" onclick="openLB('${key}',${i})" title="${nome}">${ic('play')}</button>`
@@ -1511,7 +1513,7 @@ function lbTE(e){ if(_lbX==null) return; const dx=e.changedTouches[0].clientX-_l
 /* precarica il precedente e il successivo: il cambio è immediato */
 function lbPreload(){ const n=LB.list.length; if(n<2) return;
   [1,-1].forEach(d=>{ const a=LB.list[(LB.idx+d+n)%n];
-    if(a&&!a.video&&!isPdfA(a)){ const im=new Image(); im.src=a.url; } }); }
+    if(a&&!a.scaduto&&!a.video&&!isPdfA(a)){ const im=new Image(); im.src=a.url; } }); }
 function paintLB(){
   if(!LB.open) return;
   let el=document.getElementById('lbox');
@@ -1523,14 +1525,18 @@ function paintLB(){
   }
   const a=LB.list[LB.idx]; if(!a){ closeLB(); return; }
   const n=LB.list.length, nome=esc(allegName(a,LB.idx));
-  const media = isPdfA(a)
+  const media = a.scaduto
+    ? `<div class="lbmedia lbexpired">${ic('info')}<p>Questo file e' stato aggiunto come link e non come allegato vero: il link e' scaduto e nessuno puo' piu' aprirlo.<br>Va ricaricato su Notion trascinando il file dentro il campo Allegati.</p></div>`
+    : isPdfA(a)
     ? `<iframe class="lbmedia lbdoc" src="${esc(a.url)}" title="${nome}"></iframe>`
     : a.video
     ? `<video class="lbmedia" src="${esc(a.url)}" controls playsinline preload="metadata"></video>`
     : `<img class="lbmedia" src="${esc(a.url)}" alt="${nome}">`;
   const nav = n>1 ? `<button class="lbnav prev" onclick="lbGo(-1)" aria-label="Precedente">${ic('chevronL')}</button>
       <button class="lbnav next" onclick="lbGo(1)" aria-label="Successivo">${ic('chevronR')}</button>` : '';
-  const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> isPdfA(x)
+  const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> x.scaduto
+      ? `<button class="lbth exp ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="Link scaduto">${ic('info')}</button>`
+      : isPdfA(x)
       ? `<button class="lbth doc ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('clipboard')}</button>`
       : x.video
       ? `<button class="lbth vid ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="${esc(allegName(x,i))}">${ic('play')}</button>`
