@@ -65,7 +65,7 @@ const CATALOG=[
   {cat:'Carta & sacchi', color:'#9A9183', items:['Carta igienica','Sacchi spazzatura grandi (neri)','Sacchi spazzatura medi (ospite)','Sacchi piccoli (cestini bagno)']},
   {cat:'Ambiente', color:'#2aa198', items:['Profumatore d\'ambiente','Disinfettante tessuti / antiodore','Smacchiatore tessuti (spray antimacchia)']},
   {cat:'Manutenzione cucina (staff)', color:'#7A5AA8', items:['Sale lavastoviglie','Brillantante']},
-  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Spugne cucina','Capsule lavastoviglie','Capsule/detersivo lavatrice','Canovacci bianchi (asciugamani cucina)','Panno microfibra bianco (per ospiti)','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
+  {cat:'Cortesia & dispensa ospite', color:'#b23b2e', items:['Shampoo','Balsamo','Bagnoschiuma / Gel doccia','Sapone mani','Detersivo piatti','Spugne cucina','Capsule lavastoviglie','Capsule/detersivo lavatrice','Canovacci bianchi (asciugamani cucina)','Panno microfibra bianco (per ospiti)','Tovaglioli bianchi 12x12','Caffè','Zucchero','Sale fino','Sale grosso','Pepe nero','Olio EVO','Tè e tisane','Acqua (bottiglie)']},
 ];
 function rifCatOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.cat:'Altro'; }
 function rifColorOf(name){ const g=CATALOG.find(c=>c.items.includes(name)); return g?g.color:'#9A9183'; }
