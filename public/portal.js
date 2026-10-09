@@ -1022,20 +1022,22 @@ function rifTimeline(o){
     {lbl:'Richiesto',                    d:o.richiesto_il},
     {lbl:'Ordine fatto (in arrivo)',     d:o.ordinato_il},
     // il corriere lascia il pacco all'indirizzo: e' in area posta, non ancora in casa
-    {lbl:'Arrivato in area posta',       d:o.in_posta_il||o.data_consegna},
+    {lbl:'Arrivato in area posta',       d:o.in_posta_il||o.data_consegna, prev:o.arrivo_previsto},
     {lbl:'Portato dentro casa',          d:o.portato_il},
   ] : [
     {lbl:'Richiesto',                  d:o.richiesto_il},
     {lbl:'Ordine fatto (in arrivo)',   d:o.ordinato_il},
-    {lbl:'Arrivato in magazzino',      d:o.arrivo_magazzino||o.data_consegna},
+    {lbl:'Arrivato in magazzino',      d:o.arrivo_magazzino||o.data_consegna, prev:o.arrivo_previsto},
     {lbl:'Consegnato in appartamento', d:o.portato_il},
   ];
   return `<div class="rift">${passi.map(p=>{
     const fatto=!!p.d;
+    // Data prevista dal fornitore (ancora futura): non e' un passo fatto, ma l'operatore la vede
+    const testoData = fatto ? esc(dShort(p.d)) : (p.prev ? 'previsto '+esc(dShort(p.prev)) : '—');
     return `<div class="riftp ${fatto?'ok':''}">
       <span class="riftdot"></span>
       <span class="riftlbl">${esc(p.lbl)}</span>
-      <span class="riftd">${fatto?esc(dShort(p.d)):'—'}</span></div>`;
+      <span class="riftd">${testoData}</span></div>`;
   }).join('')}</div>`;
 }
 

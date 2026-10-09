@@ -535,7 +535,13 @@ def rif_storico(token):
         note_magazzino = [l.strip() for l in note_raw.split('\n') if l.strip().startswith('[')]
         descr = ''.join(t.get('plain_text', '') for t in (pr.get('Descrizione', {}) or {}).get('title', []))
         stato = ((pr.get('Stato', {}) or {}).get('select') or {}).get('name')
-        consegna = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
+        consegna_raw = ((pr.get('Data Consegna', {}) or {}).get('date') or {}).get('start')
+        # FIX 9 ott 2026 (Andres): Data Consegna puo' essere la data PREVISTA (Amazon la dice
+        # all'atto dell'acquisto). Finche' e' futura il pacco NON e' arrivato: resta "in arrivo"
+        # (fase ordinato) con la data prevista, e diventa area posta/magazzino dal giorno stesso.
+        # Allineato alle mail e al riepilogo delle 8:00 (gas/notion-notifiche: on_or_before oggi).
+        consegna = consegna_raw if (consegna_raw and consegna_raw[:10] <= _now_rome().date().isoformat()) else None
+        arrivo_previsto = consegna_raw[:10] if (consegna_raw and not consegna) else None
         magazzino = ((pr.get('Arrivo magazzino', {}) or {}).get('date') or {}).get('start')
         acquisto = ((pr.get('Data Acquisto', {}) or {}).get('date') or {}).get('start')
         luogo = ((pr.get('Luogo di consegna', {}) or {}).get('select') or {}).get('name')
@@ -585,6 +591,7 @@ def rif_storico(token):
             'ordinato_il': acquisto if ordinato else None,
             'arrivo_magazzino': magazzino,
             'data_consegna': consegna,
+            'arrivo_previsto': arrivo_previsto,             # data prevista se ancora futura (solo fase ordinato)
             # finestra di consegna: dal magazzino si porta in casa quando c'è la pulizia
             'prossima_consegna': (prossima.get(aid) if fase in ('magazzino', 'postale') else None),
             'allegati': _allegati_of(p, 'Files & media'),   # ricevuta / foto prodotti
