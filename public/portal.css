@@ -1129,3 +1129,32 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
   padding:0 4px;font-size:15.5px;cursor:pointer}
 .vsheet .vopt .n{margin-left:auto;font-size:13px;color:var(--greige-text)}
 .vsheet .vopt .ic{margin-left:auto;color:var(--p-l)}
+
+
+/* ═══ 14 ott 2026 (sera) — barra in basso più bassa + ritocchi laptop ════════════ */
+@media (max-width:719px){
+  .bnav{padding:2px 6px calc(2px + env(safe-area-inset-bottom))}
+  .bnav .bt{min-height:48px;padding:6px 4px 3px;gap:2px}
+  .bnav .bt .ic{width:22px;height:22px}
+  .bnav .bt .tl{font-size:11.5px;letter-spacing:.1px}
+  .bnav .bt.on:before{top:-3px}
+  .bnav .bt .bdg{top:1px}
+  .bnav .bt .n{top:3px}
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  .toast{bottom:calc(60px + env(safe-area-inset-bottom))}
+  .riffab{bottom:calc(58px + env(safe-area-inset-bottom))}
+  .riftop{bottom:calc(60px + env(safe-area-inset-bottom))}
+}
+/* Laptop: con la tastiera si deve vedere dove si è (prima non c'era nessun segno) */
+button:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{
+  outline:2px solid var(--ink);outline-offset:2px}
+.tab:focus-visible,.bt:focus-visible{outline-offset:-3px}
+/* Schermi medi (tablet / laptop piccolo): colonna centrata invece di righe larghe quanto lo schermo */
+@media (min-width:720px) and (max-width:1023px){
+  #app{max-width:860px}
+}
+/* Frecce della settimana più comode su schermi grandi */
+@media (min-width:720px){
+  .wk .nav{width:44px;height:44px}
+  .wk .nav .ic{width:20px;height:20px}
+}
