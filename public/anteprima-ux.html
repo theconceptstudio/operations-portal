@@ -65,7 +65,7 @@ body{padding-bottom:80px}
 .lblmock .alleg .lbl{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .lblmock .sechead{margin:16px 2px 8px}
 /* ---- 4. monitora ---- */
-.ms-row{display:flex;gap:7px;overflow-x:auto;scroll-snap-type:x proximity;padding:2px 2px 10px;margin:0 -16px;padding-left:16px;padding-right:30px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.ms-row{display:flex;gap:7px;overflow-x:auto;scroll-snap-type:x proximity;scroll-padding-left:16px;padding:2px 2px 10px;margin:0 -16px;padding-left:16px;padding-right:30px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .ms-row::-webkit-scrollbar{display:none}
 .ms-row .c{flex:none;scroll-snap-align:start;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:#fff;border:1px solid var(--line-2);border-radius:999px;padding:0 15px;min-height:42px;font-family:var(--body);font-size:14px;color:var(--ink);cursor:pointer}
 .ms-row .c.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
@@ -94,17 +94,17 @@ body{padding-bottom:80px}
 .pill{font-size:12px;border-radius:999px;padding:3px 10px}
 .pill.pp{color:#27685f;background:#e3f1ee}.pill.pa{color:#2f5d8f;background:#e9f0f8}
 .late{color:var(--p-vh)}
-.sheet-bg{display:none;position:absolute;inset:0;background:rgba(43,22,15,.45);z-index:5}
-.sheet-bg.open{display:block}
-.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--cream);border-radius:22px 22px 0 0;padding:10px 16px 22px;z-index:6;transform:translateY(105%);transition:transform .22s ease-out}
-.sheet.open{transform:none}
-.sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:0 auto 10px}
-.sheet h4{font-family:var(--disp);font-weight:200;font-size:22px;margin:4px 2px 8px}
-.sheet .opt{display:flex;align-items:center;gap:10px;min-height:50px;border-bottom:1px solid var(--line);padding:0 4px;font-size:15.5px;cursor:pointer}
-.sheet .opt .n{margin-left:auto;font-size:13px;color:#6a6158}
-.sheet .opt.on{font-weight:400}
-.sheet .opt .ic.ok{color:var(--p-l);margin-left:auto}
-@media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+.ms-sbg{display:none;position:absolute;inset:0;background:rgba(43,22,15,.45);z-index:5}
+.ms-sbg.open{display:block}
+.ms-sheet{position:absolute;left:0;right:0;bottom:0;background:var(--cream);border-radius:22px 22px 0 0;padding:10px 16px 22px;z-index:6;transform:translateY(105%);transition:transform .22s ease-out}
+.ms-sheet.open{transform:none}
+.ms-sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:0 auto 10px}
+.ms-sheet h4{font-family:var(--disp);font-weight:200;font-size:22px;margin:4px 2px 8px}
+.ms-sheet .opt{display:flex;align-items:center;gap:10px;min-height:50px;border-bottom:1px solid var(--line);padding:0 4px;font-size:15.5px;cursor:pointer}
+.ms-sheet .opt .n{margin-left:auto;font-size:13px;color:#6a6158}
+.ms-sheet .opt.on{font-weight:400}
+.ms-sheet .opt .ic.ok{color:var(--p-l);margin-left:auto}
+@media (prefers-reduced-motion:reduce){.ms-sheet{transition:none}}
 /* ---- 5. altre idee ---- */
 .fresh{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cfc8bc;margin-top:8px}
 .fresh .rf{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(247,245,240,.35);border-radius:999px;padding:0 12px;min-height:34px;color:var(--cream);background:none;font-family:var(--body);font-size:12.5px}
@@ -146,7 +146,7 @@ table.mc td:first-child{color:#6a6158;width:44%}
         <div data-v="dopo">
           <div class="daylbl">Mer 14 ottobre</div>
           <div class="vuoto-c"><svg class="ic" viewBox="0 0 24 24" data-ic="check"></svg><div class="tx">Niente per oggi<div class="sub">Hai 1 cosa da recuperare, in alto</div></div></div>
-          <button class="next">Prossimo giorno con lavoro: ven 16 · 2 interventi<svg class="ic" viewBox="0 0 24 24" data-ic="chevronR"></svg></button>
+          <button class="next">Prossimo: ven 16 · 2 interventi<svg class="ic" viewBox="0 0 24 24" data-ic="chevronR"></svg></button>
           <div class="nodate-sec"><div class="nodate-hd"><svg class="ic" viewBox="0 0 24 24" data-ic="info"></svg>Senza data <span class="num">2</span></div>
             <div class="card"><div class="ch"><div class="t">Torquato Tasso 3</div></div><div class="row"><span class="dot" style="background:var(--p-m)"></span>ghiera tappo bidet</div></div>
             <div class="card"><div class="ch"><div class="t">San Lazzaro 10</div></div><div class="row"><span class="dot" style="background:var(--p-l)"></span>Decalcificazione macchina caffè</div></div></div>
@@ -246,8 +246,8 @@ table.mc td:first-child{color:#6a6158;width:44%}
       <div class="card"><div class="gh">Via dei Fabbri 11<span class="num">4</span></div>
         <div class="it"><span class="cir"></span><div><div class="tt">Adattatore 2x prese shuko per elettrodomestici cucina</div><div class="st"><span class="pill pp">In area posta</span><span style="color:#6a6158">da 2 giorni</span></div></div></div>
         <div class="it"><span class="cir v"></span><div><div class="tt">2 Bauli contenitori sotto-letto</div><div class="st"><span class="pill pa">In arrivo</span><span class="late">da 15 giorni</span></div></div></div></div>
-      <div class="sheet-bg" id="sbg"></div>
-      <div class="sheet" id="sheet"><div class="grab"></div><h4>Scegli la via</h4>
+      <div class="ms-sbg" id="sbg"></div>
+      <div class="ms-sheet" id="sheet"><div class="grab"></div><h4>Scegli la via</h4>
         <div class="opt on" data-via="Tutte le vie">Tutte le vie<svg class="ic ok" viewBox="0 0 24 24" data-ic="check"></svg></div>
         <div class="opt" data-via="San Lazzaro 10">San Lazzaro 10<span class="n">2</span></div>
         <div class="opt" data-via="Torquato Tasso 3">Torquato Tasso 3<span class="n">1</span></div>
