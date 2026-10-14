@@ -4,7 +4,7 @@ Operations Portal — app operatori/manutentori (Flask).
 Accesso senza password via link /o/<token>. Legge il mirror Supabase (op_*),
 scrive su Notion solo le conferme (staff propone, ufficio dispone).
 """
-import os, re, datetime, time
+import os, re, datetime, time, hmac, hashlib
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import storico as storico_mod
@@ -828,6 +828,34 @@ def run_sync():
         return jsonify({'ok': True, 'ts': datetime.datetime.utcnow().isoformat()})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+@app.route('/api/sync-auto', methods=['GET', 'POST'])
+def sync_auto():
+    """Sync frequente delle sole manutenzioni e task (lo chiama Supabase pg_cron ogni 15 minuti), cosi' lo Storico
+    e l'etichetta 'data cambiata' compaiono presto. Si autentica con un segreto il cui hash sta su Supabase
+    (op_kv, chiave sync_auth): niente variabile Vercel da gestire a mano."""
+    h = request.headers.get('Authorization', '')
+    token = h[7:].strip() if h.lower().startswith('bearer ') else ''
+    if not token:
+        return jsonify({'ok': False, 'error': 'non autorizzato'}), 403
+    try:
+        rows = sb_get('op_kv', {'key': 'eq.sync_auth', 'select': 'value'})
+        atteso = ((rows[0].get('value') or {}).get('hash') if rows else '') or ''
+    except Exception:
+        atteso = ''
+    if not atteso or not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(), atteso):
+        return jsonify({'ok': False, 'error': 'non autorizzato'}), 403
+    now = time.time()
+    if now - _LAST_SYNC['ts'] < 60:
+        return jsonify({'ok': True, 'skipped': True})
+    _LAST_SYNC['ts'] = now
+    try:
+        import sync
+        sync.sync_issues()
+        sync.sync_tasks()
+        return jsonify({'ok': True, 'synced': 'manutenzioni+task', 'ts': datetime.datetime.utcnow().isoformat()})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': type(e).__name__}), 500
 
 # ── Static (locale) / landing ────────────────────────────────────────────────
 @app.route('/')
