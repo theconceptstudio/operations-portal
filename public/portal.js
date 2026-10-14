@@ -515,16 +515,37 @@ function dataNuova(x){
   if(!x.data_vista_il) return true;
   return new Date(x.data_agg_il) > new Date(x.data_vista_il);
 }
+/* Sezioni "storia" in fondo alla scheda: note dell'operatore e cronologia. Crescono nel tempo, quindi stanno
+   in una tendina chiusa con una riga di anteprima (l'ultima cosa successa). Le istruzioni e i bottoni restano in alto.
+   Lo stato aperto/chiuso si ricorda tra un render e l'altro. */
+const SEZ_APERTE=new Set();
+function toggleSez(k,open){ if(open) SEZ_APERTE.add(k); else SEZ_APERTE.delete(k); }
+function _cut(s,n){ s=String(s||'').replace(/\s+/g,' ').trim(); return s.length>n? s.slice(0,n-1).trimEnd()+'…' : s; }
+function sezioneStoria(k, titolo, n, anteprima, corpo, evidenzia){
+  return `<details class="sez ${evidenzia?'novita':''}" ${SEZ_APERTE.has(k)?'open':''} ontoggle="toggleSez('${k}',this.open)">
+    <summary><span class="sz-t">${esc(titolo)}</span><span class="sz-n">${n}</span>
+      <span class="sz-p">${esc(anteprima)}</span><span class="sz-c">${ic('chevronD')}</span></summary>
+    <div class="sz-b">${corpo}</div></details>`;
+}
 /* Cronologia: righe 'gg/mm HH:MM · testo', la più recente in alto. Le righe interne le toglie già il server. */
-function cronologiaHtml(x){
+function cronologiaHtml(x,key){
   const righe=String(x.storico||'').split('\n').map(s=>s.trim()).filter(Boolean);
   if(!righe.length) return '';
-  const riga=r=>{ const m=r.match(/^(\d{2}\/\d{2} \d{2}:\d{2}) · (.*)$/); return m
+  const riga=r=>{ const m=r.match(/^(\d{2}\/\d{2}) \d{2}:\d{2} · (.*)$/); return m
     ?`<div class="cr"><span class="cd">${esc(m[1])}</span><span class="ct">${esc(m[2])}</span></div>`
     :`<div class="cr"><span class="ct">${esc(r)}</span></div>`; };
-  const prime=righe.slice(0,4).map(riga).join(''), altre=righe.slice(4);
-  return `<div class="cron"><span class="lbl">${ic('info')}Cronologia</span>${prime}${
-    altre.length?`<details><summary>Mostra le altre ${altre.length}</summary>${altre.map(riga).join('')}</details>`:''}</div>`;
+  const m=righe[0].match(/^(\d{2}\/\d{2}) \d{2}:\d{2} · (.*)$/);
+  const prev=m?`${m[1]} ${_cut(m[2],46)}`:_cut(righe[0],50);
+  return sezioneStoria(key+':cron','Cronologia',righe.length,prev,righe.map(riga).join(''),dataNuova(x));
+}
+/* Note scritte dall'operatore: poche righe restano in vista, tante vanno in tendina */
+function noteHtml(x,key){
+  const t=(x.note_operatore||'').trim(); if(!t) return '';
+  const righe=t.split('\n').filter(Boolean);
+  if(righe.length<=2) return `<div class="mynote"><span class="lbl">${ic('info')}Quello che hai scritto tu</span>${esc(t)}</div>`;
+  const ultima=righe[righe.length-1].replace(/^\[(\d{2}\/\d{2}) [^\]]*\]\s*/,'$1 ');
+  return sezioneStoria(key+':note','Le tue note',righe.length,_cut(ultima,50),
+    `<div class="mynote-l">${esc(t)}</div>`,false);
 }
 function tuttiItems(){
   return (DATA.issues||[]).map(x=>({...x,_kind:'issue'}))
@@ -1412,8 +1433,6 @@ function iCard(x,kind,dentro,segnaRitardo){
   const body = open ? `<div class="ibody">
       ${istr?`<div class="istr ${nuove?'nuova':''}"><span class="lbl">${ic('info')}${
         nuove?'Istruzioni aggiornate dall\'ufficio':'Istruzioni operatore'}</span>${esc(istr)}</div>`:''}
-      ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Quello che hai scritto tu</span>${esc(x.note_operatore.trim())}</div>`:''}
-      ${cronologiaHtml(x)}
       ${allegatiBlock(key)}
       <div class="actions">
         ${aspetta&&!conf
@@ -1438,6 +1457,7 @@ function iCard(x,kind,dentro,segnaRitardo){
             <div class="noteact"><button class="btn ghost" onclick="closeResched()">Annulla</button>
             <button class="btn ok" onclick="sendResched('${kind}','${id}')">${ic('check')}Invia richiesta</button></div></div>`
         : `<button class="notebtn" onclick="openResched('${key}')">${ic('calendar')}Chiedi di spostare la data</button>`}
+      ${noteHtml(x,key)}${cronologiaHtml(x,key)}
     </div>` : '';
   return `<div class="icard compact ${dentro?'dentro':''} ${(late&&segnaRitardo!==false)?'late':''} ${sel?'sel':''} ${open?'open':''}" data-k="${key}">${head}${body}</div>`;
 }

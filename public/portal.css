@@ -1025,12 +1025,20 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
   background:transparent;border-color:var(--line)}
 .rifhchips.vie .rifhchip.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
 
-/* Cronologia (Storico) nella scheda: sola lettura */
-.cron{border-radius:8px;padding:12px 15px;margin:12px 0;font-size:12.5px;line-height:1.5;background:var(--cream);border-left:2px solid var(--greige)}
-.cron .lbl{display:flex;align-items:center;gap:6px;font-family:var(--light);font-size:8.5px;letter-spacing:2px;text-transform:uppercase;color:var(--greige-text);margin-bottom:8px}
-.cron .lbl .ic{width:13px;height:13px}
-.cron .cr{display:flex;gap:10px;padding:3px 0}
-.cron .cd{flex:none;font-family:var(--light);font-size:11px;color:var(--greige-text);min-width:76px}
-.cron .ct{flex:1}
-.cron details{margin-top:4px}
-.cron summary{cursor:pointer;font-size:11.5px;color:var(--greige-text);padding:4px 0}
+/* Note e Cronologia: tendine in fondo alla scheda, chiuse con anteprima dell'ultima riga */
+.sez{margin:10px 0 0;border:1px solid var(--greige);border-radius:10px;background:var(--cream);font-size:12.5px}
+.sez>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:11px 14px;min-height:44px}
+.sez>summary::-webkit-details-marker{display:none}
+.sez .sz-t{font-family:var(--light);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--greige-text);flex:none}
+.sez .sz-n{flex:none;font-size:10.5px;color:var(--greige-text);background:#fff;border-radius:999px;padding:1px 7px}
+.sez .sz-p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);opacity:.75;font-size:12px}
+.sez .sz-c{flex:none;display:flex;transition:transform .15s}
+.sez .sz-c .ic{width:16px;height:16px}
+.sez[open] .sz-c{transform:rotate(180deg)}
+.sez[open] .sz-p{display:none}
+.sez.novita{border-color:#bcd0e6;background:#f3f7fb}
+.sez .sz-b{padding:2px 14px 12px;max-height:260px;overflow-y:auto}
+.sez .cr{display:flex;gap:10px;padding:4px 0;line-height:1.45}
+.sez .cd{flex:none;font-family:var(--light);font-size:11px;color:var(--greige-text);min-width:34px;padding-top:1px}
+.sez .ct{flex:1}
+.sez .mynote-l{white-space:pre-wrap;line-height:1.5}
