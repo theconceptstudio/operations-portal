@@ -1098,7 +1098,7 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 .next .ic{width:16px;height:16px;margin-left:auto;color:var(--greige)}
 
 /* 4) Monitora: stati su una riga che scorre, via in menu dal basso, ricerca a icona */
-.rifhchips.fasi{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scroll-padding-left:2px;
+.rifhchips.fasi{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scroll-padding-left:16px;
   -webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -16px;padding:2px 30px 10px 16px}
 .rifhchips.fasi::-webkit-scrollbar{display:none}
 .rifhchips.fasi .rifhchip{scroll-snap-align:start;min-height:42px;padding:0 15px;font-size:14px;flex:none}
