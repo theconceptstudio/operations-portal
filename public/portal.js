@@ -55,7 +55,8 @@ function setPView(v){ PVIEW=v; render(); }
 let RIF_APTS=null, RIF_APT=null, RIF_APTVIA='', RIF_CART=new Set(), RIF_CUSTOM=[],
     RIF_URG='2w', RIF_CARTOPEN=false, RIF_URGENT=new Set(),
     RIF_VIEW='storico', RIF_STORICO=null, RIF_DONE=null, RIF_HQ='', RIF_HAPT=null, RIF_APTQ='',
-    RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='', RIF_CURSOR=null, RIF_HASMORE=false;
+    RIF_HFASE=null, RIF_DSEL=new Set(), RIF_DDATE='', RIF_CURSOR=null, RIF_HASMORE=false,
+    RIF_SHEET=false, RIF_SRCH=false;
 /* Catalogo prodotti per area (pallino colore). Andres affinerà nel tempo. */
 const CATALOG=[
   {cat:'Bagno / Anticalcare', color:'#3b6ea5', items:['Anticalcare bagno forte «Jet»','Gel disincrostante','Strisce WC igiene garanzia']},
@@ -97,7 +98,9 @@ function saveUI(){ try{ localStorage.setItem(UI_KEY, JSON.stringify({tab:TAB, ri
 async function load(){
   // Se al refresh sei ripartito sulla tab Rifornimenti, carica i suoi dati
   // (altrimenti resteresti su "Carico…" perche' setTab non e' stato chiamato).
-  if(TAB==='rifornimenti'){ rifEnsureApts(); rifCacheStorico(); if(RIF_STORICO===null) rifLoadStorico(); }
+  rifCacheStorico();                         // anche fuori dalla tab: serve per il numero sulla scheda Rifornimenti
+  if(TAB==='rifornimenti'){ rifEnsureApts(); if(RIF_STORICO===null) rifLoadStorico(); }
+  else if(RIF_STORICO===null) setTimeout(()=>rifLoadStorico(),1200);
   // 1. mostra subito l'ultimo stato salvato (apertura istantanea)
   try{ const c=localStorage.getItem(CACHE_KEY); if(c){ DATA=JSON.parse(c); render(); setupAutoRefresh(); } }catch(_){}
   // 2. aggiorna dal server in sottofondo
@@ -174,19 +177,36 @@ function ripristinaAncora(){
 let VAI_SU=false;
 function vaiSu(){ VAI_SU=true; }
 
+/* Numeri sulle schede = cose che aspettano l'operatore ADESSO, e solo se > 0.
+   Da fare: interventi in ritardo o di oggi non confermati. Rifornimenti: pacchi da portare in casa
+   (area posta + magazzino). Niente numero = niente da fare. */
+function urgentiDaFare(){
+  const t=todayISO();
+  return tuttiItems().filter(x=>!x.confermato_manutentore && dateOf(x) && dateOf(x)<=t).length;
+}
+function pacchiDaPortare(){ return (RIF_STORICO||[]).filter(o=>o.fase==='postale'||o.fase==='magazzino').length; }
+function badgeNav(n){ return n>0?`<span class="bdg">${n}</span>`:''; }
+function slotRif(){
+  const n=pacchiDaPortare(), nCart=RIF_CART.size+RIF_CUSTOM.length;
+  return n>0?badgeNav(n):(nCart?`<span class="n">${nCart}</span>`:'');
+}
+function aggiornaBadgeRif(){ document.querySelectorAll('[data-rbslot]').forEach(e=>{ e.innerHTML=slotRif(); }); }
+function navHtml(cls){
+  const voci=[['dafare','clipboard','Da fare',badgeNav(urgentiDaFare())],
+              ['pulizie','broom','Pulizie',''],
+              ['rifornimenti','cart','Rifornimenti',`<span data-rbslot>${slotRif()}</span>`]];
+  const btn=voci.map(([k,i,l,b])=>`<button class="${cls==='tabs'?'tab':'bt'} ${TAB===k?'on':''}" onclick="setTab('${k}')"${TAB===k?' aria-current="page"':''}>${ic(i)}<span class="tl">${l}</span>${b}</button>`).join('');
+  return cls==='tabs' ? `<div class="tabs"><div class="wrap">${btn}</div></div>`
+                      : `<nav class="bnav" aria-label="Sezioni">${btn}</nav>`;
+}
+
 function render(){
   const yPrima=window.scrollY;
-  const c=counts();
-  const nCart=RIF_CART.size+RIF_CUSTOM.length;
   const view = TAB==='dafare'?viewDaFare() : TAB==='pulizie'?viewPulizie() : viewRifornimenti();
   document.getElementById('app').innerHTML=
     sheetFoto()+
-    `<div class="tabs"><div class="wrap">
-      <button class="tab ${TAB==='dafare'?'on':''}" onclick="setTab('dafare')">${ic('clipboard')}Da fare <span class="n">${c.m+c.t}</span></button>
-      <button class="tab ${TAB==='pulizie'?'on':''}" onclick="setTab('pulizie')">${ic('broom')}Pulizie</button>
-      <button class="tab ${TAB==='rifornimenti'?'on':''}" onclick="setTab('rifornimenti')">${ic('cart')}Rifornimenti${nCart?` <span class="n">${nCart}</span>`:''}</button>
-    </div></div>
-    <div class="content">${view}</div>`;
+    navHtml('tabs')+
+    `<div class="content">${view}</div>`+navHtml('bnav');
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && RIF_APT && RIF_Q) rifApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='catalogo' && !RIF_APT && RIF_APTQ) rifAptApplyFilter();
   if(TAB==='rifornimenti' && RIF_VIEW==='storico' && RIF_HQ) histApplyFilter();
@@ -663,10 +683,22 @@ function rigaItem(x, first, segnaRitardo){
     <div class="gmain"><div class="gtitle">${esc(titoloDi(x))}</div>
       ${tags?`<div class="gmeta">${tags}</div>`:''}</div>
     <div class="gright"><span class="gdue${l?' late':''}">${
-      d ? (l ? daysBetween(d,todayISO())+'g fa' : dShort(d)) : 'senza data'
+      d ? (l ? giorniFa(daysBetween(d,todayISO())) : dShort(d)) : 'senza data'
     }</span>${ic('chevronD')}</div></div>`;
 }
+function giorniFa(n){ return n===1?'ieri':`${n} giorni fa`; }
+function giorniRitardo(n){ return n===1?'1 giorno in ritardo':`${n} giorni in ritardo`; }
 function titoloDi(x){ return x._kind==='issue'?(x.descrizione||'Intervento'):(x.nome||'Task'); }
+
+/* Giorno senza interventi: una riga sola (prima mezza schermata) + salto al prossimo giorno con lavoro. */
+function giornoVuoto(byDay){
+  const oggi=SEL===todayISO();
+  const arretrati=tuttiItems().filter(x=>!x.confermato_manutentore && dateOf(x) && dateOf(x)<todayISO()).length;
+  const sub=(oggi&&arretrati)?`<div class="sub">Hai ${arretrati} ${arretrati===1?'cosa':'cose'} da recuperare, in alto</div>`:'';
+  const prossimo=Object.keys(byDay).filter(d=>d>SEL&&(byDay[d]||[]).length).sort()[0];
+  const btn=prossimo?`<button class="next" onclick="vaiAlGiorno('${prossimo}')">Prossimo: ${DOW[parseISO(prossimo).getDay()].toLowerCase()} ${parseISO(prossimo).getDate()} · ${byDay[prossimo].length} ${byDay[prossimo].length===1?'intervento':'interventi'}${ic('chevronR')}</button>`:'';
+  return `<div class="vuoto-c">${ic('check')}<div class="tx">${oggi?'Niente per oggi':'Niente in questo giorno'}${sub}</div></div>${btn}`;
+}
 
 /* Settimana + giorno scelto. Gli arretrati RESTANO nel loro giorno: prima venivano
    tolti e il giorno risultava vuoto anche se ci scadevano dodici cose. */
@@ -679,14 +711,14 @@ function programmaSettimana(tutti, resto){
   lista.forEach(x=>{ const k=x.appartamento||'—'; (byAptGiorno[k]=byAptGiorno[k]||[]).push(x); });
   const giorno = lista.length
     ? Object.keys(byAptGiorno).sort().map(k=>gruppoApt(k, byAptGiorno[k], true)).join('')
-    : `<div class="empty-state">${ic('check')}<div class="t">Niente in questo giorno</div></div>`;
+    : giornoVuoto(byDay);
   const nod = senzaData.length ? `<div class="nodate-sec">
       <div class="nodate-hd">${ic('info')}Senza data <span class="num">${senzaData.length}</span>
         <span class="nodate-sub">da calendarizzare: chiedi la data all'ufficio</span></div>
       ${Object.entries(senzaData.reduce((m,x)=>{const k=x.appartamento||'—';(m[k]=m[k]||[]).push(x);return m;},{}))
         .map(([k,v])=>gruppoApt(k,v,true)).join('')}</div>` : '';
   return weekStrip(byDay, tutti)
-    + `<div class="daylbl">${dLong(SEL)}<span class="cnt">${lista.length} da fare</span></div>`
+    + `<div class="daylbl">${dLong(SEL)}${lista.length?`<span class="cnt">${lista.length} da fare</span>`:''}</div>`
     + giorno + nod;
 }
 
@@ -809,6 +841,7 @@ function pCard(p){
   </div>`;
 }
 function pick(d){ SEL=d; render(); }
+function vaiAlGiorno(d){ WEEK0=mondayOf(d); SEL=d; render(); }
 function shiftWeek(n){ WEEK0=addDays(WEEK0,7*n); render(); }
 
 /* ── RIFORNIMENTI (carrello → ordine su Notion) ─────────────────────── */
@@ -1020,9 +1053,11 @@ async function rifLoadStorico(altri){
         JSON.stringify({s:j.storico,c:RIF_CURSOR,h:RIF_HASMORE})); }catch(_){}
     } else if(!altri&&RIF_STORICO===null) RIF_STORICO=[];
   }catch(_){ if(!altri) RIF_STORICO=[]; }
-  if(TAB==='rifornimenti'&&RIF_VIEW==='storico') render();
+  if(TAB==='rifornimenti'&&RIF_VIEW==='storico') render(); else aggiornaBadgeRif();
 }
-function histSetApt(via){ RIF_HAPT=via||null; render(); }
+function histSetApt(via){ RIF_HAPT=via||null; RIF_SHEET=false; render(); }
+function rifSheet(o){ RIF_SHEET=!!o; render(); }
+function rifToggleSearch(){ RIF_SRCH=!RIF_SRCH; if(!RIF_SRCH) RIF_HQ=''; render(); if(RIF_SRCH){ const e=document.getElementById('rifhq'); if(e) e.focus(); } }
 function histFilter(){ const el=document.getElementById('rifhq'); RIF_HQ=el?el.value:''; histApplyFilter(); }
 function histApplyFilter(){
   const q=rifNorm(RIF_HQ||''); let vis=0;
@@ -1218,10 +1253,16 @@ function viewStorico(){
     .filter(o=>o.fase!=='consegnato')
     .map(o=>o.via).filter(Boolean))].sort();
   if(RIF_HAPT && !vieAttive.includes(RIF_HAPT)) vieAttive.push(RIF_HAPT);
-  const aptChips = vieAttive.length>1 ? `<div class="rifhchips vie">
-    <button class="rifhchip ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutte le vie</button>
-    ${vieAttive.map(v=>`<button class="rifhchip ${RIF_HAPT===v?'on':''}" onclick="histSetApt('${esc(v).replace(/'/g,"\\'")}')">${ic('pin')}${esc(v)}</button>`).join('')}
-  </div>` : '';
+  // La via si sceglie da un menu che si apre dal basso (prima: due file di pastiglie).
+  const viaTxt=RIF_HAPT||'Tutte le vie';
+  const viaBtn = vieAttive.length>1 ? `<button class="rifvia" onclick="rifSheet(true)" aria-haspopup="dialog">${ic('pin')}<span class="k">Via</span><span class="v">${esc(viaTxt)}</span>${ic('chevronD')}</button>` : '<span class="rifvia vuota"></span>';
+  const nVia=v=>RIF_STORICO.filter(o=>o.via===v && o.fase!=='consegnato').length;
+  const sheetVia = RIF_SHEET ? `<div class="vsbg" onclick="rifSheet(false)"></div>
+    <div class="vsheet" role="dialog" aria-label="Scegli la via"><div class="grab"></div><h4>Scegli la via</h4>
+      <div class="vopt ${!RIF_HAPT?'on':''}" onclick="histSetApt('')">Tutte le vie${!RIF_HAPT?ic('check'):''}</div>
+      ${vieAttive.map(v=>`<div class="vopt ${RIF_HAPT===v?'on':''}" onclick="histSetApt('${esc(v).replace(/'/g,"\\'")}')">${esc(v)}${RIF_HAPT===v?ic('check'):`<span class="n">${nVia(v)}</span>`}</div>`).join('')}
+    </div>` : '';
+  const aptChips = `<div class="rifmtools">${viaBtn}<button class="rifsbtn" onclick="rifToggleSearch()" aria-label="Cerca" aria-expanded="${RIF_SRCH||!!RIF_HQ}">${ic('search')}</button></div>`;
 
   // filtro per fase, con conteggi calcolati sull'appartamento scelto
   let base=RIF_STORICO.slice();
@@ -1241,7 +1282,7 @@ function viewStorico(){
       ${col?`<span class="rifdot" style="background:${col}"></span>`:''}${lbl}${num}</button>`;
   }).join('')}</div>`;
 
-  const search=`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`;
+  const search=(RIF_SRCH||RIF_HQ)?`<div class="rifsearch">${ic('search')}<input id="rifhq" placeholder="Cerca un prodotto o una via…" value="${esc(RIF_HQ)}" oninput="histFilter()"></div>`:'';
 
   // ordina: prima le cose azionabili (magazzino, poi in arrivo, poi richiesti, consegnati in fondo), dentro per data
   let list=base.slice();
@@ -1383,7 +1424,9 @@ function viewStorico(){
       <button class="selconf" onclick="rifConsegna()">${ic('check')}Consegnato in appartamento</button>
     </div></div>` : '';
 
-  return faseChips+aptChips+search+body+more+`<div class="riffabsp"></div>`+dbar;
+  const haCerchi=list.some(o=>(o.fase==='magazzino'||o.fase==='postale') && o.id);
+  const aiuto=haCerchi?`<div class="rifhint">${ic('info')}Tocca il cerchio quando porti il pacco in appartamento. Lo segniamo come consegnato.</div>`:'';
+  return faseChips+aptChips+search+aiuto+body+more+`<div class="riffabsp"></div>`+dbar+sheetVia;
 }
 
 /* ── Card intervento (manutenzione o task) ─────────────────────────── */
@@ -1403,14 +1446,14 @@ function iCard(x,kind,dentro,segnaRitardo){
   const open=!SELMODE && OPEN_CARDS.has(key);
   const nuove=istrNuove(x);
   const dueBadge = dataRaw
-    ? `<span class="idue ${late?'late':''}">${late?ritardo+'g fa':esc(dShort(dataRaw))}</span>`
+    ? `<span class="idue ${late?'late':''}">${late?giorniFa(ritardo):esc(dShort(dataRaw))}</span>`
     : (conf?'':`<span class="idue nodate">senza data</span>`);
   // In selezione multipla la via serve (si vedono card di case diverse insieme);
   // dentro un gruppo no, sta già scritta nell'intestazione dell'indirizzo.
   const marcaRitardo = late && !conf && segnaRitardo!==false;
   const tags=[
     conf?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
-    marcaRitardo?`<span class="gtag late">${ritardo}g in ritardo</span>`:'',
+    marcaRitardo?`<span class="gtag late">${giorniRitardo(ritardo)}</span>`:'',
     vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}${attendeFoto(x)?'aspetta la foto':'con foto'}</span>`:'',
     nuove?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
     dataNuova(x)?`<span class="gtag nuovo">${ic('calendar')}data cambiata</span>`:'',

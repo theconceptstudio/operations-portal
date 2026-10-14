@@ -1042,3 +1042,90 @@ iframe.lbdoc{background:#fff;width:100%;height:100%;border:none}
 .sez .cd{flex:none;font-family:var(--light);font-size:11px;color:var(--greige-text);min-width:34px;padding-top:1px}
 .sez .ct{flex:1}
 .sez .mynote-l{white-space:pre-wrap;line-height:1.5}
+
+
+/* ═══ 14 ott 2026 — migliorie UX approvate da Andres ═══════════════════════════ */
+
+/* 3) Etichette leggibili: erano 8,5-10 px e grigio #9A9183 (contrasto 2,85:1); ora 11-11,5 px e #6a6158 (5,6:1) */
+:root{--greige-text:#6a6158}
+.hdr .tag{font-size:10.5px;letter-spacing:3px}
+.wklbl,.sechead,.nodate-hd,.riflbl,.dove .lbl,.istr .lbl,.reply .lbl,.mynote .lbl,
+.alleg .lbl,.notelbl,.ghdow,.ghapt,.day .dow,.rifddtw span,.sez .sz-t,.daylbl .cnt{
+  font-family:var(--body);font-size:11.5px;letter-spacing:1.1px;color:var(--greige-text)}
+.sechead.hot,.nodate-hd{color:inherit}
+.sechead.hot{color:var(--p-vh)}
+.nodate-hd{color:var(--greige-text)}
+.day .dow{font-size:10.5px;letter-spacing:.6px}
+.gtag{font-size:11.5px;padding:4px 10px}
+.chip{font-size:11px;letter-spacing:.8px}
+.tab,.tab .n{color:var(--greige-text)}
+.tab.on{color:var(--ink)}
+
+/* 2) Numeri sulle schede: pallino rosso solo se c'è qualcosa da fare adesso */
+.bdg{min-width:19px;height:19px;border-radius:999px;background:var(--p-vh);color:#fff;font-family:var(--body);
+  font-size:11.5px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;line-height:1}
+
+/* 5b) Schede in basso sul telefono (sotto 720 px); da laptop restano in alto */
+.bnav{display:none}
+@media (max-width:719px){
+  .tabs{display:none}
+  .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:35;background:var(--white);
+    border-top:1px solid var(--line-2);padding:4px 6px calc(6px + env(safe-area-inset-bottom))}
+  .bnav .bt{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;
+    background:none;padding:9px 4px 5px;min-height:56px;cursor:pointer;font-family:var(--body);color:var(--greige-text)}
+  .bnav .bt .ic{width:23px;height:23px}
+  .bnav .bt .tl{font-size:12px;letter-spacing:.2px}
+  .bnav .bt.on{color:var(--ink)}
+  .bnav .bt.on:before{content:"";position:absolute;top:-5px;left:24%;right:24%;height:2px;background:var(--ink);border-radius:0 0 2px 2px}
+  .bnav .bt .bdg{position:absolute;top:3px;left:calc(50% + 7px)}
+  .bnav .bt .n{position:absolute;top:5px;left:calc(50% + 9px);font-size:11px;color:var(--greige-text)}
+  body{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+  .riffab{bottom:calc(76px + env(safe-area-inset-bottom))}
+  .riftop{bottom:calc(78px + env(safe-area-inset-bottom))}
+}
+.tab .bdg{margin-left:2px}
+
+/* 1) Giorno senza interventi: una riga sola */
+.vuoto-c{display:flex;align-items:center;gap:12px;background:var(--white);border:1px solid var(--line);
+  border-radius:14px;padding:14px 16px;margin-bottom:10px}
+.vuoto-c .ic{width:22px;height:22px;color:var(--p-l)}
+.vuoto-c .tx{flex:1;font-size:15px}
+.vuoto-c .sub{font-size:13px;color:var(--greige-text);margin-top:2px}
+.next{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;border:1px solid var(--line-2);
+  background:var(--cream);border-radius:12px;padding:0 14px;font-family:var(--body);font-size:14px;
+  color:var(--ink);margin-bottom:18px;cursor:pointer;text-align:left}
+.next .ic{width:16px;height:16px;margin-left:auto;color:var(--greige)}
+
+/* 4) Monitora: stati su una riga che scorre, via in menu dal basso, ricerca a icona */
+.rifhchips.fasi{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scroll-padding-left:2px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -16px;padding:2px 30px 10px 16px}
+.rifhchips.fasi::-webkit-scrollbar{display:none}
+.rifhchips.fasi .rifhchip{scroll-snap-align:start;min-height:42px;padding:0 15px;font-size:14px;flex:none}
+.rifhchips.fasi .rifhn{font-size:12.5px;color:var(--greige-text)}
+.rifhchips.fasi .rifhchip.on .rifhn{color:var(--greige-soft)}
+@media (min-width:720px){.rifhchips.fasi{flex-wrap:wrap;overflow:visible;margin:0;padding:2px 2px 10px}}
+.rifmtools{display:flex;gap:8px;margin:0 0 14px}
+.rifvia{flex:1;display:flex;align-items:center;gap:8px;min-height:44px;background:var(--white);border:1px solid var(--line-2);
+  border-radius:12px;padding:0 14px;font-family:var(--body);font-size:14.5px;color:var(--ink);cursor:pointer;text-align:left}
+.rifvia.vuota{border:none;background:none;cursor:default}
+.rifvia .ic{width:16px;height:16px;color:var(--greige);flex:none}
+.rifvia .v{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rifvia .k{color:var(--greige-text);font-size:13px}
+.rifsbtn{width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--white);
+  border:1px solid var(--line-2);border-radius:12px;cursor:pointer;color:var(--ink)}
+.rifsbtn .ic{width:19px;height:19px}
+.rifhint{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#4a3f38;background:#eef4f0;border-radius:10px;
+  padding:9px 12px;margin:0 0 12px;line-height:1.4}
+.rifhint .ic{width:15px;height:15px;margin-top:1px;color:var(--p-l)}
+.vsbg{position:fixed;inset:0;background:rgba(43,22,15,.45);z-index:60}
+.vsheet{position:fixed;left:0;right:0;bottom:0;z-index:61;background:var(--cream);border-radius:22px 22px 0 0;
+  padding:10px 16px calc(22px + env(safe-area-inset-bottom));max-height:80vh;overflow-y:auto;
+  max-width:560px;margin:0 auto;animation:vsUp .22s ease-out}
+@keyframes vsUp{from{transform:translateY(100%)}to{transform:none}}
+.vsheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:0 auto 10px}
+.vsheet h4{font-family:var(--disp);font-weight:200;font-size:22px;margin:4px 2px 8px}
+.vsheet .vopt{display:flex;align-items:center;gap:10px;min-height:50px;border-bottom:1px solid var(--line);
+  padding:0 4px;font-size:15.5px;cursor:pointer}
+.vsheet .vopt .n{margin-left:auto;font-size:13px;color:var(--greige-text)}
+.vsheet .vopt .ic{margin-left:auto;color:var(--p-l)}
