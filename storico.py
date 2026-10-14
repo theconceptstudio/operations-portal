@@ -39,13 +39,13 @@ def fmt_data(iso, now=None):
 
 
 def aggiungi(esistente, righe, now=None):
-    """Mette le nuove righe IN CIMA (la piu' recente per prima). `righe` e' in ordine cronologico."""
+    """Mette le nuove righe IN CIMA (i gruppi piu' recenti per primi); dentro un gruppo restano nell'ordine dato."""
     righe = [r.strip() for r in righe if r and r.strip()]
     if not righe:
         return esistente or ''
     s = stamp(now)
     nuove = [f'{s} · {r}' for r in righe]
-    testo = '\n'.join(reversed(nuove))
+    testo = '\n'.join(nuove)              # il gruppo di righe nuove sta in cima, nell'ordine in cui e' stato elencato
     if esistente and esistente.strip():
         testo += '\n' + esistente.strip()
     if len(testo) > MAX_CARATTERI:

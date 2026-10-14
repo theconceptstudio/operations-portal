@@ -62,9 +62,9 @@ class TestEventi(unittest.TestCase):
 class TestTesto(unittest.TestCase):
     def test_piu_recente_in_alto_e_ora_di_roma(self):
         t = S.aggiungi('', ['📌 uno', '📅 due'], NOW)
-        self.assertEqual(t, '14/10 14:05 · 📅 due\n14/10 14:05 · 📌 uno')
+        self.assertEqual(t, '14/10 14:05 · 📌 uno\n14/10 14:05 · 📅 due')
         t2 = S.aggiungi(t, ['📝 tre'], NOW)
-        self.assertTrue(t2.startswith('14/10 14:05 · 📝 tre\n14/10 14:05 · 📅 due'))
+        self.assertTrue(t2.startswith('14/10 14:05 · 📝 tre\n14/10 14:05 · 📌 uno'))
         self.assertEqual(S.aggiungi('x', [], NOW), 'x')
 
     def test_taglio_alle_righe_vecchie(self):
