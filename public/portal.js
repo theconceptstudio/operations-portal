@@ -219,8 +219,8 @@ function toggleCard(k){
 function segnaLetta(kind,id){
   const arr=kind==='issue'?DATA.issues:DATA.tasks;
   const it=(arr||[]).find(x=>x.notion_id===id);
-  if(!it || !istrNuove(it)) return;
-  it.istruzioni_viste_il=new Date().toISOString();   // subito, senza aspettare il server
+  if(!it || !(istrNuove(it)||dataNuova(it))) return;
+  it.istruzioni_viste_il=it.data_vista_il=new Date().toISOString();   // subito, senza aspettare il server
   fetch(`${API}/letta`,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({kind,id})}).catch(()=>{});
 }
@@ -250,7 +250,7 @@ async function reschedMulti(){
   for(const k of keys){ const i=k.indexOf(':'), kind=k.slice(0,i), id=k.slice(i+1);
     const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
     try{ const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind,id,testo})}); const j=await r.json(); if(j.ok){ ok++; if(it) it.note_operatore=j.note_operatore; } }catch(_){}
+      body:JSON.stringify({kind,id,testo,data_richiesta:dv})}); const j=await r.json(); if(j.ok){ ok++; if(it){ it.note_operatore=j.note_operatore; if(j.storico!==undefined) it.storico=j.storico; } } }catch(_){}
   }
   render(); toast(ok?`${ok} richieste inviate all'ufficio`:'Non riuscito, riprova');
 }
@@ -509,6 +509,23 @@ function istrNuove(x){
   if(!x.istruzioni_viste_il) return true;
   return new Date(x.istruzioni_agg_il) > new Date(x.istruzioni_viste_il);
 }
+/* La data è stata cambiata dall'ufficio dopo l'ultima volta che l'operatore ha aperto la scheda */
+function dataNuova(x){
+  if(!x.data_agg_il) return false;
+  if(!x.data_vista_il) return true;
+  return new Date(x.data_agg_il) > new Date(x.data_vista_il);
+}
+/* Cronologia: righe 'gg/mm HH:MM · testo', la più recente in alto. Le righe interne le toglie già il server. */
+function cronologiaHtml(x){
+  const righe=String(x.storico||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!righe.length) return '';
+  const riga=r=>{ const m=r.match(/^(\d{2}\/\d{2} \d{2}:\d{2}) · (.*)$/); return m
+    ?`<div class="cr"><span class="cd">${esc(m[1])}</span><span class="ct">${esc(m[2])}</span></div>`
+    :`<div class="cr"><span class="ct">${esc(r)}</span></div>`; };
+  const prime=righe.slice(0,4).map(riga).join(''), altre=righe.slice(4);
+  return `<div class="cron"><span class="lbl">${ic('info')}Cronologia</span>${prime}${
+    altre.length?`<details><summary>Mostra le altre ${altre.length}</summary>${altre.map(riga).join('')}</details>`:''}</div>`;
+}
 function tuttiItems(){
   return (DATA.issues||[]).map(x=>({...x,_kind:'issue'}))
     .concat((DATA.tasks||[]).map(x=>({...x,_kind:'task'})));
@@ -570,7 +587,7 @@ function corsiaFoto(arr, extra){
         <div class="gtitle">${esc(titoloDi(x))}</div>
         <div class="gmeta"><span class="gtag via">${esc(x.indirizzo||x.appartamento||'—')}</span>
           ${l?`<span class="gtag foto">ferma da ${daysBetween(d,todayISO())}g</span>`:''}
-          ${istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:''}</div>
+          ${istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:''}${dataNuova(x)?`<span class="gtag nuovo">${ic('calendar')}data cambiata</span>`:''}</div>
       </div>
       <button class="btn foto minif" onclick="pickFoto('${x._kind}','${x.notion_id}')">
         ${ic('camera')}Foto</button></div>`;
@@ -617,6 +634,7 @@ function rigaItem(x, first, segnaRitardo){
   const tags=[
     vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}con foto</span>`:'',
     istrNuove(x)?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
+    dataNuova(x)?`<span class="gtag nuovo">${ic('calendar')}data cambiata</span>`:'',
     x.confermato_manutentore?`<span class="gtag ok">${ic('check')}confermato</span>`:'',
   ].filter(Boolean).join('');
   return `<div class="dfrow${first?' first':''}${(l&&segnaRitardo!==false)?' late':''}" data-k="${key}" onclick="toggleCard('${key}')">
@@ -1374,6 +1392,7 @@ function iCard(x,kind,dentro,segnaRitardo){
     marcaRitardo?`<span class="gtag late">${ritardo}g in ritardo</span>`:'',
     vuoleFoto(x)?`<span class="gtag foto">${ic('camera')}${attendeFoto(x)?'aspetta la foto':'con foto'}</span>`:'',
     nuove?`<span class="gtag nuovo">${ic('info')}istruzioni aggiornate</span>`:'',
+    dataNuova(x)?`<span class="gtag nuovo">${ic('calendar')}data cambiata</span>`:'',
     (SELMODE&&!dentro)?`<span class="gtag via">${esc(via||'—')}</span>`:'',
   ].filter(Boolean).join('');
   // Testata: il LAVORO è la riga grande, non l'indirizzo.
@@ -1394,6 +1413,7 @@ function iCard(x,kind,dentro,segnaRitardo){
       ${istr?`<div class="istr ${nuove?'nuova':''}"><span class="lbl">${ic('info')}${
         nuove?'Istruzioni aggiornate dall\'ufficio':'Istruzioni operatore'}</span>${esc(istr)}</div>`:''}
       ${(x.note_operatore||'').trim()?`<div class="mynote"><span class="lbl">${ic('info')}Quello che hai scritto tu</span>${esc(x.note_operatore.trim())}</div>`:''}
+      ${cronologiaHtml(x)}
       ${allegatiBlock(key)}
       <div class="actions">
         ${aspetta&&!conf
@@ -1613,7 +1633,7 @@ function commitPending(){
   const t=document.getElementById('toast'); t.classList.remove('show','undo');
   fetch(`${API}/conferma`,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({kind:p.kind,id:p.id,senza_foto:p.senzaFoto})})
-    .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; if(j.note_operatore){ p.it.note_operatore=j.note_operatore; render(); } })
+    .then(r=>r.json()).then(j=>{ if(!j.ok) throw 0; if(j.note_operatore){ p.it.note_operatore=j.note_operatore; if(j.storico!=null) p.it.storico=j.storico; render(); } })
     .catch(()=>{ p.it.confermato_manutentore=false; render(); toast('Conferma non riuscita, riprova.'); });
 }
 function undoConferma(){
@@ -1634,6 +1654,7 @@ async function riattiva(kind,id){
       body:JSON.stringify({kind,id,valore:false})});
     const j=await r.json(); if(!j.ok) throw 0;
     if(j.note_operatore) it.note_operatore=j.note_operatore;
+    if(j.storico!=null) it.storico=j.storico;
     toast('Riattivata'); render();
   }catch(e){ it.confermato_manutentore=true; render(); toast('Non riuscito, riprova.'); }
 }
@@ -1657,9 +1678,9 @@ async function sendResched(kind,id){
   const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
   try{
     const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind,id,testo})});
+      body:JSON.stringify({kind,id,testo,data_richiesta:dv})});
     const j=await r.json(); if(!j.ok) throw 0;
-    if(it) it.note_operatore=j.note_operatore; toast("Richiesta inviata all'ufficio"); render();
+    if(it){ it.note_operatore=j.note_operatore; if(j.storico!==undefined) it.storico=j.storico; } toast("Richiesta inviata all'ufficio"); render();
   }catch(e){ toast('Non riuscito, riprova'); render(); }
 }
 async function sendNota(kind,id){
@@ -1672,7 +1693,7 @@ async function sendNota(kind,id){
     const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({kind,id,testo})});
     const j=await r.json(); if(!j.ok) throw 0;
-    if(it) it.note_operatore=j.note_operatore; toast("Nota inviata all'ufficio"); render();
+    if(it){ it.note_operatore=j.note_operatore; if(j.storico!==undefined) it.storico=j.storico; } toast("Nota inviata all'ufficio"); render();
   }catch(e){ toast('Nota non inviata, riprova'); render(); }
 }
 
@@ -1755,7 +1776,7 @@ async function uploadFoto(e){
       try{ const r=await fetch(`${API}/nota`,{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({kind,id,testo})}); const j=await r.json();
         if(j.ok){ const arr=kind==='issue'?DATA.issues:DATA.tasks; const it=(arr||[]).find(x=>x.notion_id===id);
-          if(it){ it.note_operatore=j.note_operatore; render(); } } }catch(_){}
+          if(it){ it.note_operatore=j.note_operatore; if(j.storico!=null) it.storico=j.storico; render(); } } }catch(_){}
     }
   }
   if(ok) toast(ok>1?`${ok} file inviati all'ufficio`:"File inviato all'ufficio");

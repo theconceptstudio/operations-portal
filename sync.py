@@ -9,6 +9,7 @@ Segreti via env; fallback config_local.py (gitignored) per il locale.
 """
 import os, sys, time, hashlib, datetime
 import requests
+import storico as storico_mod
 
 # ── Config ────────────────────────────────────────────────────────────────
 NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
@@ -200,7 +201,7 @@ def _reset_confermato_su_spostamento(table, rows, date_key):
     """Se una task/issue era 'Confermato dal manutentore' e la sua data è stata spostata (dall'ufficio
     su Notion), togli la conferma: torna 'da fare' per l'operatore. Confronta la data col mirror precedente."""
     prev = sb_map(table, f'notion_id,{date_key},confermato_manutentore')
-    n = 0
+    n, ids = 0, set()
     for row in rows:
         p = prev.get(row['notion_id'])
         if p and p.get('confermato_manutentore') and p.get(date_key) and row.get(date_key) and p[date_key] != row[date_key]:
@@ -209,11 +210,87 @@ def _reset_confermato_su_spostamento(table, rows, date_key):
                                            'Confermato il': {'date': None}})
                 row['confermato_manutentore'] = False
                 row['confermato_il'] = None
+                ids.add(row['notion_id'])
                 n += 1
             except Exception as e:
                 print(f'  [reset-conferma] {row["notion_id"][:8]}: {e}')
     if n: print(f'{table}: {n} conferme rimosse (data spostata)')
-    return n
+    return ids
+
+
+# ── Storico (registro automatico delle modifiche dell'ufficio) ───────────────
+MAX_STORICO_PER_GIRO = 30     # oltre questa soglia qualcosa non torna (o e' il primo giro dopo un guasto): si rimanda
+
+def _n_storico_attuale(page_id):
+    """Rilegge lo Storico FRESCO dalla pagina Notion subito prima di scrivere: se nel frattempo il portale
+    ha aggiunto una riga (azione dell'operatore), non la sovrascriviamo."""
+    pid = page_id.replace('-', '')
+    r = _session.get(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS, timeout=20)
+    r.raise_for_status()
+    prop = (r.json().get('properties') or {}).get('Storico')
+    if prop is None:
+        return None                                  # la proprieta' non esiste: non scriviamo
+    return text_of(prop)
+
+def _scrivi_storico(page_id, righe):
+    """Mette le righe in cima allo Storico della pagina. Torna il nuovo testo o None se non riuscito."""
+    try:
+        attuale = _n_storico_attuale(page_id)
+        if attuale is None:
+            return None
+        nuovo = storico_mod.aggiungi(attuale, righe)
+        n_patch(page_id, {'Storico': {'rich_text': storico_mod.blocchi_rich_text(nuovo)}})
+        return nuovo
+    except Exception as e:
+        print(f'  [storico] {page_id[:8]}: {e}')
+        return None
+
+_CAMPI_DIFF = ('stato', 'istruzioni_hash', 'confermato_manutentore', 'operatore_notion_id', 'priorita')
+
+def _applica_storico(table, rows, kind, date_key, prev, nomi_op, resets, chiuse):
+    """Confronta ogni riga con il mirror, scrive le righe di Storico su Notion e aggiorna i campi
+    'data cambiata'. Se la scrittura su Notion non riesce, i campi confrontati tornano al valore del mirror:
+    cosi' la differenza si ripresenta al giro dopo invece di perdersi."""
+    ora_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    mirror_pieno = bool(prev)                         # mirror vuoto = guasto o primo giro: niente "righe nuove"
+    scritte = 0
+    for row in rows:
+        p = prev.get(row['notion_id'])
+        eventi, data_cambiata, richiesta_esaurita = storico_mod.eventi_da_diff(
+            p, row, date_key, nomi_op, richiesta=(p or {}).get('data_richiesta'))
+        if p is None and mirror_pieno:
+            nuova = storico_mod.evento_riga_nuova(row, kind, nomi_op)
+            if nuova:
+                eventi.append(nuova)
+        if row['notion_id'] in resets:
+            # la conferma l'ha tolta il sistema perche' la data e' cambiata: non e' una "riapertura" a mano
+            eventi = [e for e in eventi if not e.startswith('↩︎ Riaperta dall')]
+            eventi.append('↩︎ Conferma tolta: la data è cambiata')
+        # valori che restano uguali se non cambia niente (sb_upsert sovrascrive con None quello che manca)
+        row['data_vista_il'] = (p or {}).get('data_vista_il')
+        row['data_agg_il'] = ora_iso if data_cambiata else (p or {}).get('data_agg_il')
+        row['data_richiesta'] = None if richiesta_esaurita else (p or {}).get('data_richiesta')
+        if not eventi:
+            continue
+        if scritte >= MAX_STORICO_PER_GIRO:
+            nuovo = None
+        else:
+            nuovo = _scrivi_storico(row['notion_id'], eventi)
+            scritte += 1
+        if nuovo is None:
+            if p is not None:                         # riprova al prossimo giro
+                for k in _CAMPI_DIFF + (date_key, 'data_richiesta'):
+                    row[k] = p.get(k)
+                row['data_agg_il'] = p.get('data_agg_il')
+                if row['notion_id'] in resets:
+                    pass                              # la conferma e' gia' stata tolta su Notion: resta cosi'
+            continue
+        row['storico'] = nuovo
+    for pid, testo in chiuse:
+        if scritte >= MAX_STORICO_PER_GIRO:
+            break
+        _scrivi_storico(pid, [testo]); scritte += 1
+    if scritte: print(f'{table}: {scritte} pagine con nuove righe di Storico')
 
 # ── Sync ────────────────────────────────────────────────────────────────────
 FIELD_ATTIVITA = {'Pulizia', 'Pulizia a Fondo', 'Manutenzioni', 'Tuttofare', 'Lavanderia'}
@@ -330,11 +407,15 @@ def sync_pulizie(apt_map):
 
 def sync_issues():
     pages = n_query(DB_ISSUES)
-    rows = []
+    prev = sb_map('op_issues', 'notion_id,stato,data_intervento,istruzioni_hash,confermato_manutentore,operatore_notion_id,priorita,data_richiesta,data_agg_il,data_vista_il')
+    nomi_op = {k: v.get('nome') for k, v in sb_map('op_operatori', 'notion_id,nome').items()}
+    rows, chiuse = [], []
     for p in pages:
         pr = p['properties']
         stato = status_name(pr.get('Stato'))
         if stato in STATI_ISSUE_CHIUSI:  # solo aperte
+            if nid(p['id']) in prev:     # era aperta nel mirror e ora e' chiusa: lo scriviamo nello Storico
+                chiuse.append((p['id'], f'🔒 Chiusa: {stato}'))
             continue
         conf_il = date_start(pr.get('Confermato il'))
         rows.append({
@@ -347,12 +428,15 @@ def sync_issues():
             'data_intervento': date_start(pr.get('Data Intervento')),
             'istruzioni': text_of(pr.get('Istruzioni operatore')),
             'note_operatore': text_of(pr.get('Note operatore')),
+            'storico': text_of(pr.get('Storico')),
             'confermato_manutentore': chk_of(pr.get('Confermato dal manutentore')),
             'confermato_il': conf_il,
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
     _segna_istruzioni_cambiate('op_issues', rows)
-    _reset_confermato_su_spostamento('op_issues', rows, 'data_intervento')
+    # le differenze si calcolano PRIMA del reset della conferma (che modifica la riga)
+    resets = _reset_confermato_su_spostamento('op_issues', rows, 'data_intervento')
+    _applica_storico('op_issues', rows, 'issue', 'data_intervento', prev, nomi_op, resets, chiuse)
     n = sb_upsert('op_issues', rows)
     rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows])
     print(f'issues: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
@@ -361,14 +445,20 @@ def sync_issues():
 def sync_tasks():
     # solo task con un Operatore assegnato e non ancora Done
     pages = n_query(DB_TASKS)
-    rows = []
+    prev = sb_map('op_tasks', 'notion_id,stato,due_date,istruzioni_hash,confermato_manutentore,operatore_notion_id,priorita,data_richiesta,data_agg_il,data_vista_il')
+    nomi_op = {k: v.get('nome') for k, v in sb_map('op_operatori', 'notion_id,nome').items()}
+    rows, chiuse = [], []
     for p in pages:
         pr = p['properties']
         op = rel_first(pr.get('Operatore'))
-        if not op:
-            continue
         stato = status_name(pr.get('Status'))
+        if not op:
+            if nid(p['id']) in prev:
+                chiuse.append((p['id'], '👤 Non più assegnata a un operatore'))
+            continue
         if stato == 'Done':
+            if nid(p['id']) in prev:
+                chiuse.append((p['id'], '🔒 Chiusa: Done'))
             continue
         tag = ', '.join(multi_names(pr.get('Tag')))
         rows.append({
@@ -382,13 +472,15 @@ def sync_tasks():
             'tag': tag,
             'istruzioni': text_of(pr.get('Istruzioni operatore')),
             'note_operatore': text_of(pr.get('Note operatore')),
+            'storico': text_of(pr.get('Storico')),
             'allegati_count': len((pr.get('Allegati') or {}).get('files', []) or []),
             'confermato_manutentore': chk_of(pr.get('Confermato dal manutentore')),
             'confermato_il': date_start(pr.get('Confermato il')),
             'created_time': (pr.get('Created time') or {}).get('created_time'),
         })
     _segna_istruzioni_cambiate('op_tasks', rows)
-    _reset_confermato_su_spostamento('op_tasks', rows, 'due_date')
+    resets = _reset_confermato_su_spostamento('op_tasks', rows, 'due_date')
+    _applica_storico('op_tasks', rows, 'task', 'due_date', prev, nomi_op, resets, chiuse)
     n = sb_upsert('op_tasks', rows)
     rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows])
     print(f'tasks: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')

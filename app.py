@@ -7,6 +7,7 @@ scrive su Notion solo le conferme (staff propone, ufficio dispone).
 import os, re, datetime, time
 from concurrent.futures import ThreadPoolExecutor
 import requests
+import storico as storico_mod
 from flask import Flask, request, jsonify, send_from_directory, redirect
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -164,27 +165,54 @@ def _meta_allegati(urls):
         return {}
 
 
-def _append_nota(item_id, table, testo):
-    """Aggiunge una riga (con timestamp gg/mm hh:mm ora italiana) alle Note operatore su Notion + mirror.
-    Idempotente: se l'ultima riga ha lo stesso testo, non la ripete (evita duplicati da retry/doppio invio)."""
+def _registra(item_id, table, testo, data_richiesta=None, senza_foto=False):
+    """Aggiunge una riga (con timestamp gg/mm hh:mm ora italiana) alle Note operatore su Notion + mirror
+    e, in aggiunta, la riga corrispondente allo Storico (proprieta' Notion "Storico", piu' recente in alto).
+    Idempotente: se l'ultima riga delle note ha lo stesso testo, non ripete niente (retry/doppio invio).
+    Torna {'note': ..., 'storico': ...}. Lo Storico e' un extra: se la proprieta' non esiste o Notion la rifiuta,
+    le Note operatore si scrivono comunque."""
     page = n_get(item_id)
-    rt = (page.get('properties', {}).get('Note operatore', {}) or {}).get('rich_text', []) or []
+    props = page.get('properties', {}) or {}
+    rt = (props.get('Note operatore', {}) or {}).get('rich_text', []) or []
     existing = ''.join(t.get('plain_text', '') for t in rt)
     testo = (testo or '').strip()
     last = existing.rsplit('\n', 1)[-1] if existing else ''
     last_body = last.split('] ', 1)[1].strip() if last.startswith('[') and '] ' in last else last.strip()
+    storico_prop = props.get('Storico')
+    storico_esist = ''.join(t.get('plain_text', '') for t in ((storico_prop or {}).get('rich_text') or []))
     if last_body and last_body == testo:
-        return existing  # gia' presente: niente duplicato
+        return {'note': existing, 'storico': storico_esist}      # gia' presente: niente duplicato
     stamp = _now_rome().strftime('%d/%m %H:%M')
     nuovo = ((existing + '\n') if existing else '') + f'[{stamp}] {testo}'
     nuovo = nuovo[-1990:]
-    n_patch(item_id, {'Note operatore': {'rich_text': [{'text': {'content': nuovo}}]}})
+    nuovo_storico = None
+    if storico_prop is not None:
+        nuovo_storico = storico_mod.aggiungi(storico_esist, [storico_mod.riga_da_azione_portale(testo)])
+    props_patch = {'Note operatore': {'rich_text': [{'text': {'content': nuovo}}]}}
+    if nuovo_storico is not None:
+        props_patch['Storico'] = {'rich_text': storico_mod.blocchi_rich_text(nuovo_storico)}
+    try:
+        n_patch(item_id, props_patch)
+    except requests.HTTPError:
+        if nuovo_storico is None:
+            raise
+        nuovo_storico = None                                      # lo Storico non passa: almeno le note
+        n_patch(item_id, {'Note operatore': props_patch['Note operatore']})
     if SUPABASE_URL and SUPABASE_KEY:
+        mirror = {'note_operatore': nuovo}
+        if nuovo_storico is not None:
+            mirror['storico'] = nuovo_storico
+        if data_richiesta:
+            mirror['data_richiesta'] = str(data_richiesta)[:10]
         _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
                        headers=_sb_headers({'Prefer': 'return=minimal'}),
                        params={'notion_id': f'eq.{item_id}'},
-                       json={'note_operatore': nuovo}, timeout=20)
-    return nuovo
+                       json=mirror, timeout=20)
+    return {'note': nuovo, 'storico': nuovo_storico if nuovo_storico is not None else storico_esist}
+
+
+def _append_nota(item_id, table, testo):
+    return _registra(item_id, table, testo)['note']
 
 # ── Pagina portale (shell) ───────────────────────────────────────────────────
 @app.route('/o/<token>')
@@ -205,7 +233,7 @@ def op_data(token):
     start = (today - datetime.timedelta(days=21)).isoformat()   # finestra: pulizie recenti + prossime
     end   = (today + datetime.timedelta(days=60)).isoformat()
     PCOLS = 'notion_id,appartamento_notion_id,data,tipo,stato,inizio,fine,deposito,late_checkout,early_checkin'
-    AGG   = ',istruzioni_agg_il,istruzioni_viste_il'   # segnale 'istruzioni aggiornate'
+    AGG   = ',istruzioni_agg_il,istruzioni_viste_il,data_agg_il,data_vista_il,storico'   # segnali 'istruzioni aggiornate' / 'data cambiata' + cronologia
     ICOLS = 'notion_id,descrizione,appartamento_notion_id,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time' + AGG
     TCOLS = 'notion_id,nome,appartamento_notion_id,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time' + AGG
     gp = lambda: sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}',
@@ -217,6 +245,8 @@ def op_data(token):
         fp, fi, ft = ex.submit(gp), ex.submit(gi), ex.submit(gt)
         pulizie, issues, tasks = fp.result(), fi.result(), ft.result()
     apt = apt_map()
+    for x in issues + tasks:
+        x['storico'] = storico_mod.visibile_operatore(x.get('storico'))      # le righe interne restano su Notion
     for x in pulizie + issues + tasks:
         a = apt.get(x.get('appartamento_notion_id'))
         x['appartamento'] = (a or {}).get('nome') or '—'
@@ -246,19 +276,21 @@ def conferma(token):
                        params={'notion_id': f'eq.{item_id}'},
                        json={'confermato_manutentore': bool(valore), 'confermato_il': oggi}, timeout=20)
         # Traccia conferma/riattivazione anche nelle Note operatore (con data e ora)
-        nuova_nota = None
+        nuova_nota, nuovo_storico = None, None
         try:
             # senza_foto: ha confermato saltando il promemoria della foto. Non lo blocchiamo,
             # ma resta scritto: così l'ufficio sa che manca la prova senza doverla rincorrere.
             testo = ('✅ Intervento confermato' if valore else '↩︎ Riaperta')
             if valore and d.get('senza_foto'):
                 testo = '✅ Intervento confermato (senza foto)'
-            nuova_nota = _append_nota(item_id, table, testo)
+            r = _registra(item_id, table, testo)
+            nuova_nota, nuovo_storico = r['note'], r['storico']
         except requests.HTTPError:
             pass
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-    return jsonify({'ok': True, 'note_operatore': nuova_nota})
+    return jsonify({'ok': True, 'note_operatore': nuova_nota,
+                    'storico': storico_mod.visibile_operatore(nuovo_storico) if nuovo_storico is not None else None})
 
 @app.route('/api/o/<token>/letta', methods=['POST'])
 def letta(token):
@@ -274,8 +306,8 @@ def letta(token):
         _session.patch(f'{SUPABASE_URL}/rest/v1/{table}',
                        headers=_sb_headers({'Prefer': 'return=minimal'}),
                        params={'notion_id': f'eq.{item_id}'},
-                       json={'istruzioni_viste_il': datetime.datetime.now(
-                             datetime.timezone.utc).isoformat()}, timeout=20)
+                       json={'istruzioni_viste_il': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                             'data_vista_il': datetime.datetime.now(datetime.timezone.utc).isoformat()}, timeout=20)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True})
@@ -292,10 +324,10 @@ def nota(token):
     if not (item_id and testo): return jsonify({'ok': False, 'error': 'dati mancanti'}), 400
     table = 'op_tasks' if kind == 'task' else 'op_issues'
     try:
-        nuovo = _append_nota(item_id, table, testo)
+        r = _registra(item_id, table, testo, data_richiesta=d.get('data_richiesta'))
     except requests.HTTPError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-    return jsonify({'ok': True, 'note_operatore': nuovo})
+    return jsonify({'ok': True, 'note_operatore': r['note'], 'storico': storico_mod.visibile_operatore(r['storico'])})
 
 @app.route('/api/o/<token>/allegati/<kind>/<item_id>')
 def allegati(token, kind, item_id):
