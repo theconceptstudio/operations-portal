@@ -4,6 +4,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sync
+import datetime
+_ORIG_SCRIVI = sync._scrivi_storico
 
 
 def prev(**k):
@@ -24,7 +26,7 @@ class TestApplica(unittest.TestCase):
     def setUp(self):
         self.scritte = []
         self.esito = 'NUOVO STORICO'
-        sync._scrivi_storico = lambda pid, righe: (self.scritte.append((pid, list(righe))) or self.esito)
+        sync._scrivi_storico = lambda pid, righe, **kw: (self.scritte.append((pid, list(righe))) or self.esito)
 
     def run_(self, rows, prev_, resets=(), chiuse=()):
         sync._applica_storico('op_issues', rows, 'issue', 'data_intervento', prev_, {'op1': 'Juan'}, set(resets), list(chiuse))
@@ -70,7 +72,7 @@ class TestApplica(unittest.TestCase):
         self.assertEqual(self.scritte, [])
 
     def test_riga_nuova_con_mirror_pieno(self):
-        r = riga(notion_id='nuova', created_time='2026-10-13T10:00:00Z')
+        r = riga(notion_id='nuova', created_time=(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=20)).isoformat())
         self.run_([r], {'altra': prev()})
         self.assertIn('Creata', self.scritte[0][1][0])
 
@@ -88,3 +90,37 @@ class TestApplica(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestChiusuraNonSiRipete(unittest.TestCase):
+    def test_ultima_riga_uguale(self):
+        import storico as S
+        self.assertTrue(S.ultima_riga_uguale('16/10 16:51 · 🔒 Chiusa: Done\n15/10 07:00 · 👤 Assegnata a X', ['🔒 Chiusa: Done']))
+        self.assertFalse(S.ultima_riga_uguale('16/10 16:51 · ✅ Manutentore: Intervento confermato', ['🔒 Chiusa: Done']))
+        self.assertFalse(S.ultima_riga_uguale('', ['🔒 Chiusa: Done']))
+
+    def test_scrivi_storico_evita_il_duplicato(self):
+        scritti = []
+        sync._scrivi_storico = _ORIG_SCRIVI
+        sync._n_storico_attuale = lambda pid: '16/10 12:45 · 🔒 Chiusa: Done'
+        sync.n_patch = lambda pid, props: scritti.append(props)
+        r = sync._scrivi_storico('p', ['🔒 Chiusa: Done'], evita_duplicati=True)
+        self.assertEqual(scritti, [])
+        self.assertIn('Chiusa', r)
+        sync._scrivi_storico('p', ['🔒 Chiusa: Done'])             # senza la protezione scrive (comportamento normale)
+        self.assertEqual(len(scritti), 1)
+
+    def test_reconcile_svuota_solo_se_permesso(self):
+        chiamate = []
+        class R:
+            ok = True
+            def __init__(s, j=None): s._j = j
+            def json(s): return s._j
+        class Sess:
+            def get(s, *a, **k): chiamate.append('get'); return R([{'notion_id': 'vecchia'}])
+            def delete(s, *a, **k): chiamate.append('del'); return R()
+        sync._session = Sess(); sync.SUPABASE_URL = 'http://x'; sync.SUPABASE_KEY = 'k'
+        self.assertEqual(sync.sb_reconcile('op_tasks', []), 0)
+        self.assertEqual(chiamate, [])                              # ancora protetto
+        self.assertEqual(sync.sb_reconcile('op_tasks', [], consenti_vuoto=True), 1)
+        self.assertEqual(chiamate, ['get', 'del'])

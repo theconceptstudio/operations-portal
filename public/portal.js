@@ -139,6 +139,25 @@ async function silentRefresh(){
   if(TAB==='rifornimenti'&&RIF_VIEW==='storico'&&!RIF_LOADEDMORE&&!RIF_DSEL.size) rifLoadStorico();
   _refreshing=false;
 }
+/* Tasto "aggiorna" in alto a destra: l'operatore forza l'allineamento con Notion quando vuole.
+   Un'icona sola che gira mentre lavora, un "Aggiornato" breve alla fine. Niente altro sullo schermo. */
+let _manuale=false;
+async function aggiornaOra(){
+  if(_manuale) return;
+  if(NOTE_OPEN||RESCHED_OPEN||SELMODE||PENDING){ toast('Prima chiudi quello che stai facendo'); return; }
+  const ae=document.activeElement; if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)){ toast('Prima chiudi quello che stai scrivendo'); return; }
+  _manuale=true;
+  const b=document.getElementById('rfbtn'); if(b) b.classList.add('spin');
+  try{
+    await fetch(`${API}/refresh?now=1`);
+    const r=await fetch(`${API}/data`,{cache:'no-store'}); const fresh=await r.json();
+    if(!fresh.error){ DATA=fresh; saveCache(); render(); }
+    if(TAB==='rifornimenti'||RIF_STORICO!==null) rifLoadStorico();
+    toast('Aggiornato');
+  }catch(_){ toast('Non riuscito, riprova'); }
+  if(b) b.classList.remove('spin');
+  _manuale=false;
+}
 let _autoOn=false;
 function setupAutoRefresh(){
   if(_autoOn) return; _autoOn=true;

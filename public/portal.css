@@ -1158,3 +1158,15 @@ button:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-vi
   .wk .nav{width:44px;height:44px}
   .wk .nav .ic{width:20px;height:20px}
 }
+
+
+/* Tasto aggiorna: piccolo, in alto a destra nell'intestazione, senza testo */
+.hdr{position:relative}
+.rfbtn{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;border:1px solid rgba(247,245,240,.28);
+  background:none;color:var(--cream);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:.85}
+.rfbtn:before{content:"";position:absolute;inset:-6px}
+.rfbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.rfbtn.spin svg{animation:rfspin .9s linear infinite}
+@keyframes rfspin{to{transform:rotate(360deg)}}
+@media (min-width:1024px){.rfbtn{top:22px;right:40px}}
+@media (prefers-reduced-motion:reduce){.rfbtn.spin svg{animation:none;opacity:.5}}

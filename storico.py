@@ -165,3 +165,13 @@ def evento_riga_nuova(row, kind, nomi_op=None, now=None):
     if recente:
         return f'🆕 Creata ({stato})' + (f' · assegnata a {op}' if op else '')
     return f'🔁 Di nuovo aperta ({stato})'
+
+
+def ultima_riga_uguale(esistente, righe):
+    """True se la riga piu recente dello Storico (senza data e ora) coincide con l'ultima riga che stiamo per scrivere:
+    serve a non ripetere lo stesso evento a ogni giro."""
+    if not esistente or not righe:
+        return False
+    prima = (esistente.split('\n')[0] or '').strip()
+    corpo = re.sub(r'^\d{2}/\d{2} \d{2}:\d{2} · ', '', prima).strip()
+    return corpo == str(righe[-1]).strip()

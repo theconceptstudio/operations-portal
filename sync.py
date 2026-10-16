@@ -119,10 +119,13 @@ def sb_upsert(table, rows):
         done += len(chunk)
     return done
 
-def sb_reconcile(table, current_ids):
+def sb_reconcile(table, current_ids, consenti_vuoto=False):
     """Rimuove dal mirror le righe non più presenti su Notion (annullate/chiuse/eliminate).
-    Sicuro: non fa nulla se non abbiamo id correnti (evita di svuotare per una fetch fallita)."""
-    if not current_ids or not (SUPABASE_URL and SUPABASE_KEY):
+    Sicuro: senza id correnti non fa niente (evita di svuotare per una fetch fallita), A MENO CHE il chiamante
+    sappia che Notion ha risposto davvero (consenti_vuoto): es. l'ultima task aperta e' stata chiusa.
+    ⚠️ BUG 16 ott 2026: con zero task aperte il mirror non si svuotava mai, la task chiusa restava visibile
+    all'operatore e ogni sync (ogni 15 min) riscriveva "Chiusa: Done" nello Storico."""
+    if (not current_ids and not consenti_vuoto) or not (SUPABASE_URL and SUPABASE_KEY):
         return 0
     h = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
     r = _session.get(f'{SUPABASE_URL}/rest/v1/{table}', headers=h,
@@ -232,12 +235,15 @@ def _n_storico_attuale(page_id):
         return None                                  # la proprieta' non esiste: non scriviamo
     return text_of(prop)
 
-def _scrivi_storico(page_id, righe):
-    """Mette le righe in cima allo Storico della pagina. Torna il nuovo testo o None se non riuscito."""
+def _scrivi_storico(page_id, righe, evita_duplicati=False):
+    """Mette le righe in cima allo Storico della pagina. Torna il nuovo testo o None se non riuscito.
+    evita_duplicati: se l'ultima riga dello Storico dice gia la stessa cosa non scrive niente (rete di sicurezza)."""
     try:
         attuale = _n_storico_attuale(page_id)
         if attuale is None:
             return None
+        if evita_duplicati and storico_mod.ultima_riga_uguale(attuale, righe):
+            return attuale
         nuovo = storico_mod.aggiungi(attuale, righe)
         n_patch(page_id, {'Storico': {'rich_text': storico_mod.blocchi_rich_text(nuovo)}})
         return nuovo
@@ -289,7 +295,7 @@ def _applica_storico(table, rows, kind, date_key, prev, nomi_op, resets, chiuse)
     for pid, testo in chiuse:
         if scritte >= MAX_STORICO_PER_GIRO:
             break
-        _scrivi_storico(pid, [testo]); scritte += 1
+        _scrivi_storico(pid, [testo], evita_duplicati=True); scritte += 1
     if scritte: print(f'{table}: {scritte} pagine con nuove righe di Storico')
 
 # ── Sync ────────────────────────────────────────────────────────────────────
@@ -438,7 +444,7 @@ def sync_issues():
     resets = _reset_confermato_su_spostamento('op_issues', rows, 'data_intervento')
     _applica_storico('op_issues', rows, 'issue', 'data_intervento', prev, nomi_op, resets, chiuse)
     n = sb_upsert('op_issues', rows)
-    rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows])
+    rm = sb_reconcile('op_issues', [r['notion_id'] for r in rows], consenti_vuoto=bool(pages))
     print(f'issues: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
     return rows
 
@@ -482,7 +488,7 @@ def sync_tasks():
     resets = _reset_confermato_su_spostamento('op_tasks', rows, 'due_date')
     _applica_storico('op_tasks', rows, 'task', 'due_date', prev, nomi_op, resets, chiuse)
     n = sb_upsert('op_tasks', rows)
-    rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows])
+    rm = sb_reconcile('op_tasks', [r['notion_id'] for r in rows], consenti_vuoto=bool(pages))
     print(f'tasks: {len(rows)} aperte, {n} upsert, {rm} orfane rimosse')
     return rows
 

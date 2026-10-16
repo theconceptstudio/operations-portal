@@ -382,7 +382,8 @@ def refresh(token):
     op = operatore_by_token(token)
     if not op: return jsonify({'ok': False, 'error': 'token'}), 404
     now = time.time()
-    if now - _LAST_SYNC['ts'] < 40:
+    freno = 8 if request.args.get('now') == '1' else 40         # tasto "aggiorna" dell'operatore: freno corto
+    if now - _LAST_SYNC['ts'] < freno:
         return jsonify({'ok': True, 'skipped': True})
     _LAST_SYNC['ts'] = now
     try:
@@ -875,7 +876,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20261014d">
+<link rel=stylesheet href="/portal.css?v=20261016a">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -885,6 +886,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
     </div>
     <div class=date id=hdrDate></div>
   </div>
+  <button class=rfbtn id=rfbtn onclick="aggiornaOra()" title="Aggiorna" aria-label="Aggiorna"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.4L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.4L21 15"/><path d="M21 20v-5h-5"/></svg></button>
 </header>
 <main id=app><div class=content><div class=loading>Carico…</div></div></main>
 <div id=toast class=toast></div>
@@ -893,7 +895,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20261014d"></script>
+<script src="/portal.js?v=20261016a"></script>
 </body></html>"""
 
 if __name__ == '__main__':
