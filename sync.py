@@ -66,6 +66,9 @@ def text_of(prop):
 def rel_first(prop):
     a = (prop or {}).get('relation', [])
     return a[0]['id'].replace('-', '') if a else None
+def rel_all(prop):
+    """Tutti gli id collegati (una task puo' riguardare piu' appartamenti), senza trattini, nell'ordine di Notion."""
+    return [a['id'].replace('-', '') for a in ((prop or {}).get('relation') or []) if a.get('id')]
 def sel_name(prop):
     s = (prop or {}).get('select'); return s['name'] if s else None
 def status_name(prop):
@@ -428,6 +431,7 @@ def sync_issues():
             'notion_id': nid(p['id']),
             'descrizione': title_of(pr.get('Descrizione')),
             'appartamento_notion_id': rel_first(pr.get('Apartment')),
+            'appartamenti_notion_ids': rel_all(pr.get('Apartment')),
             'operatore_notion_id': rel_first(pr.get('Operatore')),
             'priorita': sel_name(pr.get('Priority')),
             'stato': stato,
@@ -471,6 +475,7 @@ def sync_tasks():
             'notion_id': nid(p['id']),
             'nome': title_of(pr.get('Name')),
             'appartamento_notion_id': rel_first(pr.get('Appartamento')),
+            'appartamenti_notion_ids': rel_all(pr.get('Appartamento')),
             'operatore_notion_id': op,
             'priorita': sel_name(pr.get('Priority')),
             'stato': stato,

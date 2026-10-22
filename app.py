@@ -61,6 +61,21 @@ def apt_map():
             _apt_cache['ts'] = now
     return _apt_cache['map']
 
+def etichetta_appartamenti(x, apt):
+    """Nome, indirizzo e numero di immobili di una voce. Una task collegata a piu' appartamenti e' UNA task sola
+    (si fa e si chiude una volta): mostra tutti gli indirizzi sulla stessa riga, nell'ordine di Notion, senza doppioni."""
+    ids = [i for i in (x.get('appartamenti_notion_ids') or []) if i]
+    if len(ids) < 2:
+        a = apt.get(x.get('appartamento_notion_id'))
+        return (a or {}).get('nome') or '—', (a or {}).get('indirizzo') or '', 1
+    nomi, vie = [], []
+    for i in ids:
+        a = apt.get(i) or {}
+        if a.get('nome') and a['nome'] not in nomi: nomi.append(a['nome'])
+        via = a.get('indirizzo') or a.get('nome')
+        if via and via not in vie: vie.append(via)
+    return ' · '.join(nomi) or '—', ' · '.join(vie), len(vie) or 1
+
 def n_patch(page_id, props):
     pid = page_id.replace('-', '')
     r = _session.patch(f'https://api.notion.com/v1/pages/{pid}', headers=N_HEADERS,
@@ -234,8 +249,8 @@ def op_data(token):
     end   = (today + datetime.timedelta(days=60)).isoformat()
     PCOLS = 'notion_id,appartamento_notion_id,data,tipo,stato,inizio,fine,deposito,late_checkout,early_checkin'
     AGG   = ',istruzioni_agg_il,istruzioni_viste_il,data_agg_il,data_vista_il,storico'   # segnali 'istruzioni aggiornate' / 'data cambiata' + cronologia
-    ICOLS = 'notion_id,descrizione,appartamento_notion_id,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time' + AGG
-    TCOLS = 'notion_id,nome,appartamento_notion_id,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time' + AGG
+    ICOLS = 'notion_id,descrizione,appartamento_notion_id,appartamenti_notion_ids,priorita,stato,data_intervento,istruzioni,note_operatore,confermato_manutentore,created_time' + AGG
+    TCOLS = 'notion_id,nome,appartamento_notion_id,appartamenti_notion_ids,priorita,stato,due_date,tag,istruzioni,note_operatore,allegati_count,confermato_manutentore,created_time' + AGG
     gp = lambda: sb_get('op_pulizie', {'operatore_notion_id': f'eq.{oid}',
         'and': f'(data.gte.{start},data.lte.{end})', 'select': PCOLS, 'order': 'data.asc'})
     gi = lambda: sb_get('op_issues', {'operatore_notion_id': f'eq.{oid}', 'select': ICOLS, 'order': 'data_intervento.asc'})
@@ -248,9 +263,7 @@ def op_data(token):
     for x in issues + tasks:
         x['storico'] = storico_mod.visibile_operatore(x.get('storico'))      # le righe interne restano su Notion
     for x in pulizie + issues + tasks:
-        a = apt.get(x.get('appartamento_notion_id'))
-        x['appartamento'] = (a or {}).get('nome') or '—'
-        x['indirizzo'] = (a or {}).get('indirizzo') or ''
+        x['appartamento'], x['indirizzo'], x['n_immobili'] = etichetta_appartamenti(x, apt)
     resp = jsonify({'operatore': op.get('nome'), 'oggi': today.isoformat(),
                     'pulizie': pulizie, 'issues': issues, 'tasks': tasks})
     resp.headers['Cache-Control'] = 'no-store'
