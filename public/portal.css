@@ -622,7 +622,7 @@ video.lbmedia{width:100%}
   border:none;background:rgba(255,255,255,.14);color:var(--cream);cursor:pointer;
   display:flex;align-items:center;justify-content:center}
 .lbnav .ic{width:24px;height:24px}
-.lbnav.prev{left:10px} .lbnav.next{right:10px}
+.lbnav.lbprev{left:10px} .lbnav.lbnext{right:10px}
 .lbstrip{flex:none;display:flex;gap:8px;overflow-x:auto;padding:12px 16px calc(14px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling:touch}
 .lbth{width:54px;height:54px;flex:none;border-radius:8px;border:2px solid transparent;
@@ -633,7 +633,7 @@ video.lbmedia{width:100%}
 .lbth.on{opacity:1;border-color:var(--cream)}
 @media (min-width:900px){
   .lbmedia{max-width:min(100%,1100px)}
-  .lbnav.prev{left:24px} .lbnav.next{right:24px}
+  .lbnav.lbprev{left:24px} .lbnav.lbnext{right:24px}
 }
 
 /* Cronologia — ricevute e finestra di consegna */

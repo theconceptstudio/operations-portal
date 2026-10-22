@@ -1636,8 +1636,8 @@ function paintLB(){
     : a.video
     ? `<video class="lbmedia" src="${esc(a.url)}" controls playsinline preload="metadata"></video>`
     : `<img class="lbmedia" src="${esc(a.url)}" alt="${nome}">`;
-  const nav = n>1 ? `<button class="lbnav prev" onclick="lbGo(-1)" aria-label="Precedente">${ic('chevronL')}</button>
-      <button class="lbnav next" onclick="lbGo(1)" aria-label="Successivo">${ic('chevronR')}</button>` : '';
+  const nav = n>1 ? `<button class="lbnav lbprev" onclick="lbGo(-1)" aria-label="Precedente">${ic('chevronL')}</button>
+      <button class="lbnav lbnext" onclick="lbGo(1)" aria-label="Successivo">${ic('chevronR')}</button>` : '';
   const strip = n>1 ? `<div class="lbstrip">${LB.list.map((x,i)=> x.scaduto
       ? `<button class="lbth exp ${i===LB.idx?'on':''}" onclick="lbSet(${i})" title="Link scaduto">${ic('info')}</button>`
       : isPdfA(x)
