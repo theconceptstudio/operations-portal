@@ -41,6 +41,14 @@ const ICN = {
   history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
   clip:'<path d="M20.5 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8L9.9 17.7a1.8 1.8 0 0 1-2.6-2.6L15 7.5"/>',
 };
+/* COSA e' stato comprato: si legge la DESCRIZIONE della spesa (Andres, 28 ott 2026). La Note e' interna e non comanda.
+   Eccezione: la descrizione generata dall'app ("Rifornimenti — Appartamento — gg/mm") non dice niente: vale l'elenco prodotti. */
+function cosaOrdine(o){
+  const d=String(o.descrizione||'').replace(/<[^>]*>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
+  const auto=/^Rifornimenti\s+[—–-]\s+.+\s+[—–-]\s+\d{1,2}\/\d{1,2}$/i.test(d);
+  const p=String(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
+  return (d&&!auto)?d:(p||d);
+}
 function ic(name, cls){ return `<svg class="ic${cls?' '+cls:''}" viewBox="0 0 24 24">${ICN[name]||''}</svg>`; }
 
 let DATA=null, TAB='dafare', SEL=todayISO(), WEEK0=mondayOf(todayISO());
@@ -1051,7 +1059,7 @@ function rifWaMagazzino(){
   vie.forEach((via,i)=>{
     out.push(E?`*📍 ${via.toUpperCase()}*`:`*${via}*`);
     perVia[via].forEach(o=>{
-      const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim()||(o.descrizione||'').trim();
+      const prod=cosaOrdine(o);
       if(prod) out.push(`• ${prod}`);
     });
     out.push(i<vie.length-1?WA_SEP:'');
@@ -1320,8 +1328,7 @@ function viewStorico(){
     o._i=i;
     let f=RIF_FASE[o.fase]||RIF_FASE.richiesto;
 
-    const prod=(o.prodotti||'').replace(/^Prodotti \(\d+\):\s*/,'').trim();
-    const detail=prod||(o.descrizione||'').trim();
+    const detail=cosaOrdine(o);
     const hay=rifNorm(`${o.via} ${detail} ${o.stato||''} ${f.lbl}`);
     const key='ord:'+i;
     const alleg=(o.allegati||[]).filter(a=>a&&a.url);
