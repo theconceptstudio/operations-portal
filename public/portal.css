@@ -1170,3 +1170,16 @@ button:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-vi
 @keyframes rfspin{to{transform:rotate(360deg)}}
 @media (min-width:1024px){.rfbtn{top:22px;right:40px}}
 @media (prefers-reduced-motion:reduce){.rfbtn.spin svg{animation:none;opacity:.5}}
+
+/* ═══ 11 nov 2026 — Monitora: barra conferma consegna e tasto "Non ancora consegnato" ═══
+   Bug: la barra marrone e' sticky a 14px dal fondo, ma sul telefono in basso c'e' la
+   barra Da fare / Pulizie / Rifornimenti: copriva il tasto "Consegnato in appartamento".
+   Ora la barra si ferma SOPRA la barra in basso (altezza + area sicura dell'iPhone). */
+@media (max-width:719px){
+  .selbar{bottom:calc(66px + env(safe-area-inset-bottom))}
+}
+.rifundo{margin:10px 0 2px}
+.rifundobtn{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:10px;
+  background:none;border:1px dashed var(--greige);color:var(--ink);font-family:var(--body);font-size:13px;cursor:pointer}
+.rifundobtn .ic{width:15px;height:15px;color:var(--greige-text)}
+.rifundobtn:active{background:var(--cream)}

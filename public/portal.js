@@ -135,7 +135,7 @@ async function triggerSync(){
 let _refreshing=false;
 async function silentRefresh(){
   if(_refreshing || PENDING || NOTE_OPEN || RESCHED_OPEN || SELMODE || document.hidden) return;
-  if(RIF_CARTOPEN || LB.open || RIF_DSEL.size || RIF_NOTA_OPEN) return;  // non ricostruire nel carrello, allegati, selezione consegne o mentre scrivi una nota
+  if(RIF_CARTOPEN || LB.open || RIF_DSEL.size || RIF_NOTA_OPEN || RIF_PEND) return;  // non ricostruire nel carrello, allegati, selezione consegne o mentre scrivi una nota
   const ae=document.activeElement;  // né mentre sta digitando (ricerca / prodotto custom)
   if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
   _refreshing=true;
@@ -144,7 +144,7 @@ async function silentRefresh(){
     if(!fresh.error){ DATA=fresh; saveCache(); render(); }
   }catch(_){}
   // Monitora aperta: riallinea anche gli ordini (solo se non ha caricato pagine vecchie)
-  if(TAB==='rifornimenti'&&RIF_VIEW==='storico'&&!RIF_LOADEDMORE&&!RIF_DSEL.size) rifLoadStorico();
+  if(TAB==='rifornimenti'&&RIF_VIEW==='storico'&&!RIF_LOADEDMORE&&!RIF_DSEL.size&&!RIF_PEND) rifLoadStorico();
   _refreshing=false;
 }
 /* Tasto "aggiorna" in alto a destra: l'operatore forza l'allineamento con Notion quando vuole.
@@ -1032,18 +1032,80 @@ async function rifNotaSave(id){
 /* Selezione merce in magazzino -> conferma "portata in appartamento" */
 function rifDSel(id){ if(RIF_DSEL.has(id)) RIF_DSEL.delete(id); else RIF_DSEL.add(id); render(); }
 function rifDSelClear(){ RIF_DSEL=new Set(); render(); toast('Selezione annullata'); }
-async function rifConsegna(){
+/* ── Consegna in appartamento con finestra di annullamento (5s) ──────────────
+   11 nov 2026 (Andres): toccare "Consegnato in appartamento" non scrive subito su
+   Notion. Lo schermo si aggiorna subito (ottimistico) e compare "Annulla 5": solo
+   allo scadere dei 5 secondi parte la scrittura. Stessa logica della conferma degli
+   interventi. Vale anche per il tasto inverso "Non ancora consegnato". */
+let RIF_PEND=null;
+function rifSnap(o){ return {id:o.id, fase:o.fase, portato_il:o.portato_il}; }
+function rifRestore(snaps){
+  snaps.forEach(sn=>{ const o=(RIF_STORICO||[]).find(x=>x.id===sn.id);
+    if(o){ o.fase=sn.fase; o.portato_il=sn.portato_il; } });
+}
+/* In che fase torna una voce quando si toglie la consegna (stessa regola del server) */
+function rifFaseSenzaConsegna(o){
+  if(o.luogo==='Appartamento' && o.data_consegna) return 'postale';
+  if(o.arrivo_magazzino || o.data_consegna) return 'magazzino';
+  if(o.ordinato_il) return 'ordinato';
+  return 'richiesto';
+}
+function rifPendStart(msg, ids, apply, endpoint, body, restoreSel){
+  if(PENDING) commitPending();       // un'altra conferma in attesa: la chiudo subito
+  if(RIF_PEND) rifCommit();
+  const snaps=(RIF_STORICO||[]).filter(o=>ids.includes(o.id)).map(rifSnap);
+  apply();
+  let sec=5;
+  const t=document.getElementById('toast');
+  const paint=()=>{ t.innerHTML=`<svg class="ic" viewBox="0 0 24 24">${ICN.check}</svg><span>${esc(msg)}</span>`+
+    `<button class="undo-btn" onclick="rifUndoPend()">${ic('chevronL')}Annulla ${sec}</button>`; };
+  paint(); t.classList.add('show','undo');
+  const iv=setInterval(()=>{ sec--; if(sec<=0){ rifCommit(); } else paint(); },1000);
+  RIF_PEND={endpoint, body, snaps, iv, restoreSel:!!restoreSel};
+}
+function rifCommit(){
+  if(!RIF_PEND) return;
+  const p=RIF_PEND; RIF_PEND=null; clearInterval(p.iv);
+  const t=document.getElementById('toast'); t.classList.remove('show','undo');
+  // keepalive: se si chiude l'app negli ultimi istanti la richiesta parte comunque
+  fetch(`${API}/${p.endpoint}`,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(p.body)})
+    .then(r=>r.json()).then(j=>{
+      const fatti=(j.confermati||0)+(j.annullati||0);
+      if(!j.ok || (!fatti && j.errori)) throw 0;
+      rifLoadStorico();                                   // riallinea con Notion
+      if(j.errori) toast(`${j.errori} non riuscit${j.errori===1?'a':'e'}, riprova`);
+    })
+    .catch(()=>{ rifRestore(p.snaps); render(); toast('Non riuscito, riprova'); });
+}
+function rifUndoPend(){
+  if(!RIF_PEND) return;
+  const p=RIF_PEND; RIF_PEND=null; clearInterval(p.iv);
+  rifRestore(p.snaps);
+  if(p.restoreSel) RIF_DSEL=new Set(p.snaps.map(sn=>sn.id));   // torna la barra, con la stessa selezione
+  render();
+  const t=document.getElementById('toast'); t.classList.remove('show','undo');
+  toast('Annullato');
+}
+function rifConsegna(){
   const ids=[...RIF_DSEL]; if(!ids.length) return;
   const dv=(document.getElementById('rifddate')||{}).value||todayISO();
-  toast('Confermo la consegna…');
-  try{
-    const r=await fetch(`${API}/rif-consegna`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ids, data:dv})});
-    const j=await r.json(); if(!j.ok) throw 0;
-    RIF_DSEL=new Set(); RIF_STORICO=null; render(); rifLoadStorico();
-    toast(`${j.confermati} consegn${j.confermati===1?'a':'e'} confermat${j.confermati===1?'a':'e'} in appartamento`);
-  }catch(e){ toast('Non riuscito, riprova'); }
+  rifPendStart(ids.length===1?'Consegnato in appartamento':`${ids.length} consegne in appartamento`, ids,
+    ()=>{ (RIF_STORICO||[]).forEach(o=>{ if(ids.includes(o.id)){ o.fase='consegnato'; o.portato_il=dv; } });
+          RIF_DSEL=new Set(); render(); },
+    'rif-consegna', {ids, data:dv}, true);
 }
+/* Segnata per sbaglio come consegnata: la rimette come "non ancora consegnata".
+   Toglie la spunta su Notion (dopo i 5 secondi, annullabili) e la voce torna dov'era. */
+function rifNonConsegnato(id){
+  rifPendStart('Rimesso come non consegnato', [id],
+    ()=>{ const o=(RIF_STORICO||[]).find(x=>x.id===id);
+          if(o){ o.fase=rifFaseSenzaConsegna(o); o.portato_il=null; } render(); },
+    'rif-annulla-consegna', {ids:[id]}, false);
+}
+// se l'app viene chiusa o messa in secondo piano durante i 5 secondi, vale come confermato
+window.addEventListener('pagehide',()=>{ if(RIF_PEND) rifCommit(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && RIF_PEND) rifCommit(); });
 /* Messaggio pulito per l'operatore di magazzino: ogni pacco -> in che appartamento va */
 function rifWaMagazzino(){
   const items=(RIF_STORICO||[]).filter(o=>RIF_DSEL.has(o.id));
@@ -1373,6 +1435,11 @@ function viewStorico(){
           <span class="rifvact">${clip}${nota}</span>
         </div>`
       : `<div class="rifverif solonota"><span class="rifvact">${clip}${nota}</span></div>`;
+    // Consegnata per sbaglio? Un tasto la rimette come "non ancora consegnata"
+    // (toglie la spunta su Notion). Solo sulle voci gia' segnate come consegnate.
+    const undoRow = o.fase==='consegnato'
+      ? `<div class="rifundo"><button class="rifundobtn" onclick="event.stopPropagation();rifNonConsegnato('${o.id}')">${ic('history')}Non ancora consegnato</button></div>`
+      : '';
     // note del magazzino (timestampate, arrivano dal campo Note su Notion)
     const notemag=(o.note_magazzino||[]);
     const noteHtml=notemag.length
@@ -1409,7 +1476,7 @@ function viewStorico(){
         <button class="rifhexp" title="${aperta?'Chiudi':'Dettagli'}" aria-label="${aperta?'Chiudi':'Dettagli'}"
           onclick="event.stopPropagation();rifToggleOrd('${key}')">${ic(aperta?'chevronU':'chevronD')}</button>
       </div>
-      ${aperta?`${rifTimeline(o)}${verifBox}${noteHtml}${notaInput}`:''}
+      ${aperta?`${rifTimeline(o)}${undoRow}${verifBox}${noteHtml}${notaInput}`:''}
     </div>`;
   });   // ⚠️ resta un ARRAY: serve per distribuire le schede nei gruppi per indirizzo
 
@@ -1704,6 +1771,7 @@ function sheetFoto(){
 }
 
 function conferma(kind,id,senzaFoto){
+  if(RIF_PEND) rifCommit();                    // una consegna in attesa: la chiudo subito
   if(PENDING) commitPending();                 // se c'è già un pending, lo confermo subito
   const arr=kind==='issue'?DATA.issues:DATA.tasks;
   const it=(arr||[]).find(x=>x.notion_id===id); if(!it) return;

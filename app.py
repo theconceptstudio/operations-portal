@@ -661,18 +661,10 @@ def rif_storico(token):
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 
-@app.route('/api/o/<token>/rif-consegna', methods=['POST'])
-def rif_consegna(token):
-    """L'operatore conferma di aver PORTATO IN APPARTAMENTO la merce selezionata
-    (in una certa data). Spunta su Notion 'Portato in appartamento' + 'Portato il':
-    Andres vede la checkbox e sa che la roba e' in casa. Solo pagine con "Mostra su
-    app operatore" spuntato, dei SUOI appartamenti."""
-    op = operatore_by_token(token)
-    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
-    d = request.get_json(force=True)
-    ids = [str(x) for x in (d.get('ids') or []) if x][:40]
-    quando = (d.get('data') or '').strip() or datetime.date.today().isoformat()
-    if not ids: return jsonify({'ok': False, 'error': 'nessuna voce selezionata'}), 400
+def _rif_scrivi_consegna(op, ids, props):
+    """Scrive su Notion 'Consegnato in appartamento' (+ data) per le voci indicate.
+    Stesse regole per conferma e annullo: la voce deve essere marcata "Mostra su app
+    operatore" e appartenere a un SUO appartamento. Ritorna (fatti, errori)."""
     my = _op_apt_ids(op['notion_id'])
     fatti, errori = 0, 0
     for pid in ids:
@@ -686,12 +678,44 @@ def rif_consegna(token):
             # a un suo appartamento.
             if not mostra or not (set(rel) & my):
                 errori += 1; continue
-            n_patch(pid, {'Consegnato in appartamento': {'checkbox': True},
-                          'Consegnato in appartamento il': {'date': {'start': quando}}})
+            n_patch(pid, props)
             fatti += 1
         except requests.HTTPError:
             errori += 1
+    return fatti, errori
+
+@app.route('/api/o/<token>/rif-consegna', methods=['POST'])
+def rif_consegna(token):
+    """L'operatore conferma di aver PORTATO IN APPARTAMENTO la merce selezionata
+    (in una certa data). Spunta su Notion 'Portato in appartamento' + 'Portato il':
+    Andres vede la checkbox e sa che la roba e' in casa. Solo pagine con "Mostra su
+    app operatore" spuntato, dei SUOI appartamenti."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True)
+    ids = [str(x) for x in (d.get('ids') or []) if x][:40]
+    quando = (d.get('data') or '').strip() or datetime.date.today().isoformat()
+    if not ids: return jsonify({'ok': False, 'error': 'nessuna voce selezionata'}), 400
+    fatti, errori = _rif_scrivi_consegna(op, ids, {
+        'Consegnato in appartamento': {'checkbox': True},
+        'Consegnato in appartamento il': {'date': {'start': quando}}})
     return jsonify({'ok': True, 'confermati': fatti, 'errori': errori, 'data': quando})
+
+@app.route('/api/o/<token>/rif-annulla-consegna', methods=['POST'])
+def rif_annulla_consegna(token):
+    """11 nov 2026 (Andres): l'operatore ha segnato 'consegnato in appartamento' per
+    sbaglio e lo rimette come NON ancora consegnato. Toglie la spunta su Notion e
+    svuota la data: la voce torna nello stato di prima (magazzino / area posta), e
+    Andres non la vede piu' come consegnata. Stesse verifiche della conferma."""
+    op = operatore_by_token(token)
+    if not op: return jsonify({'ok': False, 'error': 'token'}), 404
+    d = request.get_json(force=True)
+    ids = [str(x) for x in (d.get('ids') or []) if x][:40]
+    if not ids: return jsonify({'ok': False, 'error': 'nessuna voce selezionata'}), 400
+    fatti, errori = _rif_scrivi_consegna(op, ids, {
+        'Consegnato in appartamento': {'checkbox': False},
+        'Consegnato in appartamento il': {'date': None}})
+    return jsonify({'ok': True, 'annullati': fatti, 'errori': errori})
 
 @app.route('/api/o/<token>/rif-verifica', methods=['POST'])
 def rif_verifica(token):
@@ -889,7 +913,7 @@ def static_files(path):
 SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>The Concept · Operazioni</title>
-<link rel=stylesheet href="/portal.css?v=20261028a">
+<link rel=stylesheet href="/portal.css?v=20261111a">
 </head><body data-token="%TOKEN%">
 <header class=hdr>
   <div class=wrap>
@@ -908,7 +932,7 @@ SHELL = r"""<!doctype html><html lang=it><head><meta charset=utf-8>
 var M=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 document.getElementById('hdrDate').textContent=G[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];})();
 </script>
-<script src="/portal.js?v=20261028a"></script>
+<script src="/portal.js?v=20261111a"></script>
 </body></html>"""
 
 if __name__ == '__main__':
