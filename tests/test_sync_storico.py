@@ -37,6 +37,12 @@ class TestApplica(unittest.TestCase):
         self.assertEqual(r['data_agg_il'], '2026-10-05T00:00:00+00:00')
         self.assertEqual(r['data_vista_il'], '2026-10-01T00:00:00+00:00')
 
+    def test_data_con_ora_stesso_giorno_non_scrive_ne_accende_data_cambiata(self):
+        """Regressione 13 nov 2026: una data con ora su Notion non deve rigenerare lo Storico a ogni giro."""
+        r = riga(data_intervento='2026-10-13T09:00:00.000+02:00'); self.run_([r], {'abc': prev(data_agg_il='2026-10-05T00:00:00+00:00')})
+        self.assertEqual(self.scritte, [])
+        self.assertEqual(r['data_agg_il'], '2026-10-05T00:00:00+00:00')
+
     def test_cambio_data_scrive_e_accende_data_cambiata(self):
         r = riga(data_intervento='2026-10-20'); self.run_([r], {'abc': prev()})
         self.assertEqual(len(self.scritte), 1)

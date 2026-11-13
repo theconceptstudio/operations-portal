@@ -210,7 +210,8 @@ def _reset_confermato_su_spostamento(table, rows, date_key):
     n, ids = 0, set()
     for row in rows:
         p = prev.get(row['notion_id'])
-        if p and p.get('confermato_manutentore') and p.get(date_key) and row.get(date_key) and p[date_key] != row[date_key]:
+        # si confrontano i GIORNI: Notion puo' dare "2026-11-07T09:00:00+01:00", il mirror (colonna date) "2026-11-07"
+        if p and p.get('confermato_manutentore') and p.get(date_key) and row.get(date_key) and storico_mod.giorno(p[date_key]) != storico_mod.giorno(row[date_key]):
             try:
                 n_patch(row['notion_id'], {'Confermato dal manutentore': {'checkbox': False},
                                            'Confermato il': {'date': None}})

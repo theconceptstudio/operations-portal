@@ -26,6 +26,11 @@ def stamp(now=None):
     return ora_roma(now).strftime('%d/%m %H:%M')
 
 
+def giorno(iso):
+    """'2026-11-07T09:00:00.000+01:00' e '2026-11-07' -> '2026-11-07'; vuoto -> None."""
+    return str(iso)[:10] if iso else None
+
+
 def fmt_data(iso, now=None):
     """'2026-10-13' -> '13/10' (con l'anno se non e' quello corrente)."""
     if not iso:
@@ -108,7 +113,11 @@ def eventi_da_diff(prev, row, date_key, nomi_op=None, richiesta=None, now=None):
         righe.append(f"📌 Stato: {prev.get('stato') or 'nessuno'} → {row.get('stato') or 'nessuno'}")
     # Data
     vecchia, nuova = prev.get(date_key), row.get(date_key)
-    if (vecchia or None) != (nuova or None):
+    # ⚠️ BUG CORRETTO (13 nov 2026): Notion restituisce una data CON ORA come "2026-11-07T09:00:00.000+01:00",
+    # mentre il mirror Supabase ha la colonna di tipo `date` e rende "2026-11-07". Confrontate come stringhe
+    # risultavano sempre diverse: a ogni sync (ogni 15 min) si scriveva "Data spostata 07/11 → 07/11".
+    # Il portale ragiona in GIORNI: si confronta solo la parte data (primi 10 caratteri).
+    if giorno(vecchia) != giorno(nuova):
         data_cambiata = True
         if vecchia and nuova:
             t = f'📅 Data spostata dall\'ufficio: {fmt_data(vecchia, now)} → {fmt_data(nuova, now)}'

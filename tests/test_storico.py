@@ -23,6 +23,19 @@ class TestEventi(unittest.TestCase):
     def test_nessun_cambio_nessuna_riga(self):
         self.assertEqual(self.ev(prev(), prev()), ([], False, False))
 
+    def test_data_con_ora_su_notion_e_lo_stesso_giorno_del_mirror(self):
+        """BUG 13 nov 2026: Notion '2026-10-13T09:00:00.000+02:00' vs mirror (colonna date) '2026-10-13'
+        scriveva 'Data spostata 13/10 → 13/10' a ogni sync (600 righe in una settimana)."""
+        self.assertEqual(self.ev(prev(), prev(data_intervento='2026-10-13T09:00:00.000+02:00')), ([], False, False))
+
+    def test_cambio_ora_nello_stesso_giorno_non_e_uno_spostamento(self):
+        self.assertEqual(self.ev(prev(data_intervento='2026-10-13'), prev(data_intervento='2026-10-13T16:30:00.000+02:00')), ([], False, False))
+
+    def test_data_con_ora_spostata_di_giorno_si_vede(self):
+        r, dc, _ = self.ev(prev(), prev(data_intervento='2026-10-20T09:00:00.000+02:00'))
+        self.assertEqual(r, ['📅 Data spostata dall\'ufficio: 13/10 → 20/10'])
+        self.assertTrue(dc)
+
     def test_riga_mai_vista_non_genera_eventi_di_diff(self):
         self.assertEqual(S.eventi_da_diff(None, prev(), 'data_intervento'), ([], False, False))
 
